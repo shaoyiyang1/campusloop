@@ -1,0 +1,1720 @@
+<!DOCTYPE html>
+<html lang="zh-CN" style=""><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>实验02 · 热失控特性与热管理安全 — 3D 电池包可视化沙盘</title>
+<style>
+  :root{
+    --bg:#04070f; --bg2:#0a1322; --panel:rgba(12,20,36,.72); --panel-solid:#0b1320;
+    --ink:#d6ecff; --muted:#86a0c0; --line:#1b2c46;
+    --cyan:#22d3ee; --cyan-bright:#5ef2ff; --magenta:#ff2d78; --purple:#a855f7;
+    --brand:#22d3ee; --brand2:#ff2d78; --ok:#27ff9e; --warn:#ffb020; --err:#ff4d5e;
+    --chip:rgba(34,211,238,.10); --soft:rgba(20,32,54,.55);
+    --mono:'JetBrains Mono','Cascadia Code','Consolas',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 12% -10%, rgba(34,211,238,.12), transparent 60%),
+      radial-gradient(1000px 600px at 100% 0%, rgba(255,45,120,.10), transparent 55%),
+      radial-gradient(900px 700px at 50% 120%, rgba(168,85,247,.10), transparent 60%),
+      var(--bg);
+    background-attachment:fixed;
+    color:var(--ink);font-size:14px}
+  /* 赛博网格底纹 */
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:
+      linear-gradient(rgba(34,211,238,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,211,238,.05) 1px, transparent 1px);
+    background-size:38px 38px;mask-image:radial-gradient(circle at 50% 30%, #000 30%, transparent 95%);}
+  /* 扫描线质感 */
+  body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.35;
+    background:repeating-linear-gradient(0deg, rgba(0,0,0,.0) 0px, rgba(0,0,0,.0) 2px, rgba(0,0,0,.18) 3px, rgba(0,0,0,.0) 4px);}
+  header{position:relative;z-index:2;background:linear-gradient(120deg, rgba(255,45,120,.92), rgba(34,211,238,.92));color:#fff;
+    padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    border-bottom:1px solid rgba(34,211,238,.5);box-shadow:0 0 24px rgba(34,211,238,.25)}
+  header h1{font-size:18px;margin:0;font-weight:750;letter-spacing:1px;text-shadow:0 0 12px rgba(255,255,255,.55)}
+  header .sub{font-size:12px;opacity:.92;text-shadow:0 0 6px rgba(0,0,0,.4)}
+  header .meta{margin-left:auto;display:flex;gap:10px;font-size:12px;align-items:center;flex-wrap:wrap}
+  .badge{background:rgba(4,8,16,.45);padding:3px 9px;border-radius:20px;border:1px solid rgba(34,211,238,.4);
+    font-family:var(--mono);letter-spacing:.5px;box-shadow:0 0 10px rgba(34,211,238,.15) inset}
+  #disclaimer{position:relative;z-index:2;background:rgba(255,176,32,.08);color:#ffcf7a;border-bottom:1px solid rgba(255,176,32,.4);
+    font-size:12px;padding:5px 18px;text-shadow:0 0 8px rgba(255,176,32,.25)}
+  #disclaimer b{color:#ffe1a8}
+  .wrap{display:grid;grid-template-columns:380px minmax(0,1fr) 360px;gap:10px;padding:10px;align-items:start;position:relative;z-index:2}
+  /* 让“三维电池包实验舱”成为画面中央主视觉：左=参数控制台，中=3D舱，右=曲线/指标/FMEA/报告 */
+  .wrap>.card:nth-child(1){order:2}  /* 三维电池包实验舱 → 中央(主视觉) */
+  .wrap>.card:nth-child(2){order:1}  /* 参数控制台 / 引导 → 左侧 */
+  .wrap>.card:nth-child(3){order:3}  /* 曲线 / 指标 / FMEA / 报告 → 右侧 */
+  @media(max-width:1280px){.wrap{grid-template-columns:1fr}.wrap>.card{order:0}}
+  .card{background:var(--panel);border:1px solid rgba(34,211,238,.22);border-radius:10px;padding:10px;
+    backdrop-filter:blur(6px);box-shadow:0 0 0 1px rgba(34,211,238,.04), 0 10px 30px rgba(0,0,0,.45)}
+  .card h3{margin:0 0 8px;font-size:13px;color:var(--cyan-bright);border-left:3px solid var(--cyan);
+    padding-left:7px;letter-spacing:.5px;text-shadow:0 0 10px rgba(34,211,238,.4)}
+  canvas{display:block;width:100%;background:#060b14;border-radius:8px;border:1px solid rgba(34,211,238,.18);
+    box-shadow:0 0 18px rgba(34,211,238,.12) inset}
+  #scene3d{height:430px}
+  .status-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .st{font-family:var(--mono);font-size:11.5px;padding:3px 8px;border-radius:6px;border:1px solid var(--line);
+    background:rgba(8,14,26,.6);color:var(--muted);box-shadow:0 0 8px rgba(0,0,0,.3) inset}
+  .st.ok{color:var(--ok);border-color:rgba(39,255,158,.5);background:rgba(39,255,158,.08);text-shadow:0 0 8px rgba(39,255,158,.5)}
+  .st.bad{color:var(--err);border-color:rgba(255,77,94,.5);background:rgba(255,77,94,.08);text-shadow:0 0 8px rgba(255,77,94,.5)}
+  .st.warn{color:var(--warn);border-color:rgba(255,176,32,.5);background:rgba(255,176,32,.08);text-shadow:0 0 8px rgba(255,176,32,.5)}
+  .scene-ctrl{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+  .scene-ctrl label{font-size:12px;color:var(--muted)}
+  select,input[type=number],input[type=text]{padding:6px 8px;border:1px solid var(--line);border-radius:7px;
+    font-size:13px;background:rgba(8,14,26,.85);color:var(--ink);font-family:var(--mono)}
+  select option{background:#0b1320;color:var(--ink)}
+  input[type=text]{font-family:"Microsoft YaHei",sans-serif}
+  input[type=range]{padding:0;accent-color:var(--cyan);filter:drop-shadow(0 0 4px rgba(34,211,238,.5))}
+  .val{color:var(--cyan-bright);font-weight:600;font-family:var(--mono);text-shadow:0 0 8px rgba(34,211,238,.4)}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600}
+  .btn{padding:7px 12px;border-radius:8px;border:1px solid rgba(34,211,238,.35);background:rgba(8,14,26,.7);
+    color:var(--cyan-bright);font-weight:600;transition:.15s;box-shadow:0 0 10px rgba(34,211,238,.06)}
+  .btn:hover{background:rgba(34,211,238,.12);box-shadow:0 0 16px rgba(34,211,238,.25)}
+  .btn.primary{background:linear-gradient(120deg,var(--cyan),#19b8d8);color:#04121a;border-color:var(--cyan);
+    box-shadow:0 0 18px rgba(34,211,238,.4)}
+  .btn.primary:hover{background:linear-gradient(120deg,var(--cyan-bright),var(--cyan));box-shadow:0 0 26px rgba(34,211,238,.6)}
+  .btn.danger{background:rgba(255,77,94,.08);color:var(--err);border-color:rgba(255,77,94,.5);box-shadow:0 0 10px rgba(255,77,94,.12)}
+  .btn.danger:hover{background:rgba(255,77,94,.18);box-shadow:0 0 18px rgba(255,77,94,.3)}
+  .btn.ok{background:rgba(39,255,158,.12);color:var(--ok);border-color:rgba(39,255,158,.5);box-shadow:0 0 12px rgba(39,255,158,.2)}
+  .btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+  .btn-ghost{background:rgba(20,32,54,.55);color:var(--ink);border:1px solid var(--line)}
+  .btn-ghost:hover{background:rgba(34,211,238,.12);border-color:rgba(34,211,238,.4)}
+  .btn-warn{background:var(--warn);color:#1a1200}
+  .btn-err{background:var(--err);color:#fff}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:6px}
+  .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:3px;
+    box-shadow:0 0 6px rgba(34,211,238,.4)}
+  .mini{font-size:10.5px;color:var(--muted);opacity:.85;font-family:var(--mono)}
+  /* 温度云图色条图例 */
+  .cbar-label{font-size:10.5px;color:var(--cyan-bright);font-family:var(--mono);align-self:center}
+  .cbar-wrap{position:relative;display:inline-block}
+  .cbar-box{position:relative;width:210px;height:12px;border-radius:3px;overflow:visible;border:1px solid rgba(34,211,238,.35);box-shadow:0 0 8px rgba(34,211,238,.15) inset}
+  .cbar{position:absolute;inset:0;border-radius:2px}
+  .cbar-mark{position:absolute;top:-2px;transform:translateX(-50%);color:#fff;font-size:9px;line-height:1;transition:left .15s;text-shadow:0 0 4px #000,0 0 2px #000}
+  .cbar-ticks{position:absolute;top:13px;left:0;width:210px;display:flex;justify-content:space-between;font-size:9px;color:var(--muted);font-family:var(--mono)}
+  .kv{font-size:12px;color:var(--muted);line-height:1.7}
+  .kv b{color:var(--ink);font-family:var(--mono)}
+  .pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:20px;background:var(--chip);
+    color:var(--cyan-bright);margin:2px;border:1px solid rgba(34,211,238,.2)}
+  .grp{margin-bottom:10px}
+  .grp>label{display:block;font-size:12px;color:var(--muted);margin:6px 0 3px}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  .preset{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+  .preset button{font-size:11.5px;padding:5px 9px;background:rgba(20,32,54,.55);border:1px solid var(--line);
+    color:var(--cyan-bright);border-radius:6px}
+  .preset button:hover{background:rgba(34,211,238,.12);box-shadow:0 0 14px rgba(34,211,238,.2);border-color:rgba(34,211,238,.4)}
+  .fault-state{font-size:12px;padding:6px 10px;border-radius:8px;background:rgba(8,14,26,.6);
+    border:1px solid rgba(255,45,120,.35);margin-top:8px;color:var(--ink)}
+  .ai{background:linear-gradient(180deg,rgba(14,23,38,.95),rgba(8,14,26,.95));color:#bfe6ff;border-radius:10px;
+    padding:10px 12px;font-size:12.5px;line-height:1.6;min-height:54px;margin-top:8px;
+    border:1px solid rgba(34,211,238,.25);box-shadow:0 0 16px rgba(34,211,238,.1) inset}
+  .ai b{color:var(--cyan-bright);text-shadow:0 0 8px rgba(34,211,238,.4)}
+  .ai.ok{border-left:3px solid var(--ok);box-shadow:0 0 16px rgba(39,255,158,.12) inset} 
+  .ai.warn{border-left:3px solid var(--warn);box-shadow:0 0 16px rgba(255,176,32,.12) inset} 
+  .ai.err{border-left:3px solid var(--err);box-shadow:0 0 16px rgba(255,77,94,.12) inset}
+  .metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .metric{background:rgba(8,14,26,.6);border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+    box-shadow:0 0 12px rgba(0,0,0,.3) inset}
+  .metric .k{font-size:11px;color:var(--muted)}
+  .metric .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;font-family:var(--mono);
+    color:var(--cyan-bright);text-shadow:0 0 10px rgba(34,211,238,.45)}
+  .metric .u{font-size:11px;color:var(--muted);font-weight:400;font-family:var(--mono)}
+  .metric.bad .v{color:var(--err);text-shadow:0 0 10px rgba(255,77,94,.5)} 
+  .metric.good .v{color:var(--ok);text-shadow:0 0 10px rgba(39,255,158,.5)}
+  .phases{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+  .phase{flex:1;min-width:120px;font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);
+    background:rgba(20,32,54,.55);text-align:center;cursor:pointer;color:var(--muted)}
+  .phase.active{background:linear-gradient(120deg,var(--cyan),#19b8d8);color:#04121a;border-color:var(--cyan);
+    box-shadow:0 0 16px rgba(34,211,238,.35)}
+  .steps{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+  .stepchip{width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:rgba(8,14,26,.7);
+    color:var(--muted);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:var(--mono)}
+  .stepchip.cur{background:linear-gradient(120deg,var(--cyan),#19b8d8);color:#04121a;border-color:var(--cyan);
+    box-shadow:0 0 14px rgba(34,211,238,.5)}
+  .stepchip.done{background:rgba(39,255,158,.12);color:var(--ok);border-color:rgba(39,255,158,.5);
+    text-shadow:0 0 8px rgba(39,255,158,.5)}
+  .stepchip.lock{opacity:.45;cursor:not-allowed}
+  .stepbox{border:1px solid rgba(34,211,238,.25);border-radius:10px;padding:12px;background:rgba(8,14,26,.55);
+    box-shadow:0 0 16px rgba(34,211,238,.08) inset}
+  .stephead{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+  .stepno{background:linear-gradient(120deg,var(--cyan),#19b8d8);color:#04121a;border-radius:6px;padding:2px 8px;
+    font-size:12px;font-weight:700;box-shadow:0 0 12px rgba(34,211,238,.4)}
+  .steptitle{font-size:15px;font-weight:650;color:#eaf6ff}
+  .instr{font-size:13px;color:#b9cfe8;line-height:1.6;margin:6px 0 10px;background:rgba(34,211,238,.06);
+    border:1px solid rgba(34,211,238,.18);border-radius:8px;padding:8px 10px}
+  .op{display:grid;gap:8px}
+  label.fld{display:block;font-size:12.5px;color:var(--muted);margin-bottom:3px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  .chk{display:flex;align-items:center;gap:6px;font-size:12.5px;background:rgba(20,32,54,.55);padding:6px 8px;
+    border-radius:7px;border:1px solid var(--line)}
+  .chk input{margin:0;accent-color:var(--cyan)}
+  .feedback{margin-top:10px;padding:9px 11px;border-radius:8px;font-size:13px;line-height:1.55;display:none;
+    border:1px solid var(--line)}
+  .feedback.show{display:block}
+  .feedback.ok{background:rgba(39,255,158,.08);border-color:rgba(39,255,158,.5);color:#9affc9;
+    text-shadow:0 0 8px rgba(39,255,158,.3)}
+  .feedback.warn{background:rgba(255,176,32,.08);border-color:rgba(255,176,32,.5);color:#ffd591;
+    text-shadow:0 0 8px rgba(255,176,32,.3)}
+  .feedback.err{background:rgba(255,77,94,.08);border-color:rgba(255,77,94,.5);color:#ffb3bc;
+    text-shadow:0 0 8px rgba(255,77,94,.3)}
+  .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .tabs{display:flex;gap:4px;margin-bottom:8px}
+  .tab{flex:1;text-align:center;padding:7px 4px;font-size:12.5px;border-radius:8px;border:1px solid var(--line);
+    background:rgba(20,32,54,.55);color:var(--muted);cursor:pointer}
+  .tab.active{background:linear-gradient(120deg,var(--cyan),#19b8d8);color:#04121a;border-color:var(--cyan);
+    box-shadow:0 0 16px rgba(34,211,238,.3)}
+  .tabpane{display:none}
+  .tabpane.active{display:block}
+  table{border-collapse:collapse;width:100%;font-size:11.5px}
+  th,td{border:1px solid var(--line);padding:4px 5px;text-align:center}
+  th{background:rgba(34,211,238,.08);color:var(--cyan-bright)}
+  td input{width:100%;border:none;background:transparent;text-align:center;font-size:11.5px;color:var(--ink);font-family:var(--mono)}
+  .fmea-wrap{max-height:330px;overflow:auto}
+  .modebar{display:flex;gap:6px}
+  .modebar .btn.active{background:linear-gradient(120deg,var(--cyan),#19b8d8);color:#04121a;border-color:var(--cyan);
+    box-shadow:0 0 16px rgba(34,211,238,.4)}
+  .foot{padding:8px 18px;color:var(--muted);font-size:11.5px;text-align:center;position:relative;z-index:2}
+  #loading{position:fixed;inset:0;background:rgba(4,7,15,.92);display:flex;align-items:center;justify-content:center;
+    font-size:14px;color:var(--cyan-bright);z-index:50;text-shadow:0 0 12px rgba(34,211,238,.5)}
+  .overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
+    background:rgba(6,11,20,.88);color:#fff;z-index:60;text-align:center;padding:20px;
+    border:2px solid rgba(255,77,94,.5);box-shadow:0 0 40px rgba(255,77,94,.3) inset}
+  .overlay.show{display:flex}
+  .overlay h2{margin:0 0 8px;font-size:20px;color:#ff6b5a;text-shadow:0 0 16px rgba(255,77,94,.7)}
+  .overlay p{margin:4px 0;font-size:13px;max-width:360px;line-height:1.6;color:#ffd0d4}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>实验02 · 热失控特性与热管理安全</h1>
+    <div class="sub">3D 电池包可视化沙盘 · 虚拟防护试验舱 · 研究探索型 · 6 学时</div>
+  </div>
+  <div class="meta">
+    <span class="badge" id="clock">07:32</span>
+    <span class="badge" id="progBadge" style="">沙盘模式​</span>
+    <span class="badge" id="scoreBadge" style="text-align: center;">总分 0</span>
+    <span class="modebar">
+      <button class="btn active" id="modeSandbox">沙盘探索</button>
+      <button class="btn" id="modeGuide">24步引导</button>
+    </span>
+  </div>
+</header>
+<div id="disclaimer">⚠ 教学声明：本实验为全部虚拟训练。电芯集中参数热模型、模组热网络与气体/烟气模型均为<b>教学级简化模型</b>，仅用于趋势认知与操作训练，<b>不可用于任何设备安全认证</b>。所有参数调整均驱动模型实时重算；高危错误操作有后果反馈，关键违规由独立硬安全规则强制拦截。</div>
+
+<div class="wrap">
+  <!-- CENTER(主视觉): 三维电池包实验舱 -->
+  <div class="card">
+    <h3>三维电池包 · 实景热失控可视化</h3>
+    <canvas id="scene3d" width="640" height="430" style=""></canvas>
+    <div class="status-row">
+      <span class="st ok" id="stChamber">防护试验舱: 就绪</span>
+      <span class="st warn" id="stInterlock">舱门联锁: 待检</span>
+      <span class="st" id="stRemote">远程停机: 待命</span>
+      <span class="st ok" id="stGas">舱内气体: 正常</span>
+    </div>
+    <div class="scene-ctrl">
+      <label>展示形式</label>
+      <select id="viewMode">
+        <option value="bar">柱状升温展示</option>
+        <option value="gradient">热扩散渐变展示</option>
+      </select>
+      <button class="btn" id="btnPlay">▶ 播放</button>
+      <button class="btn" id="btnThermal">热成像: 开</button>
+      <button class="btn" id="btnLab">实验室场景: 开</button>
+      <button class="btn" id="btnEv">电动汽车场景: 开</button>
+    </div>
+    <div class="legend" id="sceneLegend"><span class="cbar-label">温度°C</span><span class="cbar-wrap"><span class="cbar-box"><span class="cbar" style="background:linear-gradient(90deg,rgb(36,92,205) 0%,rgb(28,176,228) 8%,rgb(38,200,128) 16%,rgb(165,215,52) 25%,rgb(242,206,42) 35%,rgb(246,150,36) 45%,rgb(232,58,46) 56%,rgb(255,82,120) 71%,rgb(255,238,212) 100%)"></span><span class="cbar-mark" style="left:0%">▼</span></span><span class="cbar-ticks"><i>25</i><i>220</i><i>440</i><i>700</i><i>1200</i></span></span><span class="mini">柱高∝温度 · 托盘温度场=云图</span></div>
+    <div class="kv" id="equipKV" style="margin-top:6px"><b>设备</b>：电芯模组(2×4)、舱门磁联锁、温/压/气体传感器、热成像、远程急停。<br>当前：电芯=三元(NMC)，冷却=air，隔热=0.2，触发=external。</div>
+  </div>
+
+  <!-- LEFT: 参数控制台 / 24步引导 -->
+  <div class="card">
+    <!-- 沙盘模式 -->
+    <div id="sandboxPanel" style="display: block;">
+      <h3>参数控制台（实时驱动仿真）</h3>
+      <div class="preset">
+        <button data-preset="base">NMC·风冷基准</button>
+        <button data-preset="cool">NMC·强液冷+隔热</button>
+        <button data-preset="lfp">LFP·安全</button>
+        <button data-preset="nca">NCA·高SOC失控</button>
+        <button data-preset="none">无冷却·灾难</button>
+        <button data-preset="nail">针刺·NMC失控</button>
+      </div>
+      <div class="grp">
+        <label>电芯化学体系</label>
+        <select id="cellType">
+          <option value="NMC">三元 NMC（易失控）</option>
+          <option value="NCA">三元高镍 NCA（最敏感）</option>
+          <option value="LFP">磷酸铁锂 LFP（较安全）</option>
+        </select>
+        <label>模组布局（行×列）</label>
+        <select id="layout">
+          <option value="2,4">2 × 4（8 芯）</option>
+          <option value="3,4">3 × 4（12 芯）</option>
+          <option value="2,6">2 × 6（12 芯）</option>
+          <option value="4,4">4 × 4（16 芯）</option>
+        </select>
+        <label>荷电状态 SOC：<span class="val" id="socV">1</span></label>
+        <input type="range" id="soc" min="0.2" max="1" step="0.1" value="1.0">
+        <label>环境温度 (℃)：<span class="val" id="ambV">25</span></label>
+        <input type="range" id="ambient" min="0" max="45" step="1" value="25">
+      </div>
+      <div class="grp">
+        <label>热管理方案</label>
+        <select id="cooling">
+          <option value="natural">自然冷却（无主动）</option>
+          <option value="air" selected="">风冷</option>
+          <option value="liquid">液冷</option>
+        </select>
+        <label>冷却强度：<span class="val" id="cpowV">3</span></label>
+        <input type="range" id="cpow" min="1" max="8" step="0.5" value="3">
+        <label>隔热系数 (0–0.95)：<span class="val" id="insV">0.2</span></label>
+        <input type="range" id="ins" min="0" max="0.95" step="0.05" value="0.2">
+        <label>排气/通风系数：<span class="val" id="exhV">0.5</span></label>
+        <input type="range" id="exh" min="0.2" max="0.95" step="0.05" value="0.5">
+      </div>
+      <div class="grp">
+        <label>热失控触发</label>
+        <label>触发电芯编号</label>
+        <select id="triggerCell"><option value="0">电芯 #0（第1行1列）</option><option value="1">电芯 #1（第1行2列）</option><option value="2">电芯 #2（第1行3列）</option><option value="3">电芯 #3（第1行4列）</option><option value="4">电芯 #4（第2行1列）</option><option value="5">电芯 #5（第2行2列）</option><option value="6">电芯 #6（第2行3列）</option><option value="7">电芯 #7（第2行4列）</option></select>
+        <label>触发方式</label>
+        <select id="triggerMode">
+          <option value="external">外部加热（针刺/加热板）</option>
+          <option value="overcharge">过充</option>
+          <option value="internal">内短路（瞬时大热）</option>
+          <option value="nail">针刺穿透（钢针内短路）</option>
+        </select>
+        <label>触发功率/强度：<span class="val" id="tpowV">400</span></label>
+        <input type="range" id="tpow" min="80" max="1500" step="20" value="400">
+      </div>
+      <div class="grp">
+        <label>故障分支注入</label>
+        <div class="row">
+          <button class="btn-ghost" id="faultA">A 初级·局部异常</button>
+          <button class="btn-ghost" id="faultB">B 中级·热蔓延</button>
+        </div>
+        <div class="row" style="margin-top:6px">
+          <button class="btn-err" id="faultC">C 高级·联锁失效</button>
+          <button class="btn-ghost" id="faultClr">复位联锁</button>
+        </div>
+        <div class="fault-state" id="faultState">当前状态：正常（无故障注入）</div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" id="runBtn">▶ 运行仿真</button>
+        <button class="btn-ghost" id="resetBtn">↺ 复位</button>
+        <button class="btn-ghost" id="expScene">⤓ 导出场景PNG</button>
+      </div>
+      <div class="ai ok" id="aiBoxSandbox">配置就绪，运行后查看三维演化……</div>
+    </div>
+
+    <!-- 24步引导模式 -->
+    <div id="guidePanel" style="display:none">
+      <div class="phases" id="phaseBar"></div>
+      <div class="steps" id="stepChips"></div>
+      <div class="stepbox">
+        <div class="stephead">
+          <span class="stepno" id="stepNo">01</span>
+          <span class="steptitle" id="stepTitle">选择电芯类型与模组构型</span>
+        </div>
+        <div class="instr" id="stepInstr"></div>
+        <div class="op" id="stepOp"></div>
+        <div class="ai" id="aiBox" style="background:#f3f1ff;border:1px solid #d6d0f5;color:#3a2f7a"></div>
+        <div class="feedback" id="stepFeedback"></div>
+        <div class="actions">
+          <button class="btn" id="btnPrev">← 上一步</button>
+          <button class="btn primary" id="btnNext">提交并进入下一步 →</button>
+          <button class="btn" id="btnRecompute">重新计算模型</button>
+          <button class="btn danger" id="btnReset">重置实验</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: 曲线 / 指标 / FMEA / 报告 -->
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" data-tab="chart">曲线</div>
+      <div class="tab" data-tab="metric">指标</div>
+      <div class="tab" data-tab="fmea">FMEA</div>
+      <div class="tab" data-tab="report">报告</div>
+    </div>
+    <div class="tabpane active" id="pane-chart">
+      <div class="tabs" style="margin-bottom:6px">
+        <div class="tab active" data-ctab="temp">温度-时间</div>
+        <div class="tab" data-ctab="gas">气体/压力</div>
+        <div class="tab" data-ctab="volt">电压</div>
+      </div>
+      <canvas id="chartCanvas" style="height: 210px; background: rgb(12, 22, 34);" width="535" height="315"></canvas>
+      <div class="legend" id="chartLegend"><span class="sw" style="background:rgba(255,80,80,.95)"></span>触发电芯&nbsp;<span class="sw" style="background:rgba(80,220,140,.9)"></span>平均&nbsp;<span class="sw" style="background:rgba(255,150,60,.7)"></span>最高&nbsp;<span class="sw" style="background:rgba(80,160,255,.7)"></span>最低</div>
+      <div class="kv" id="eventsKV" style="margin-top:6px"><b>关键事件</b>：触发→失控 @ 34s ｜ 传播起始 @ 60s ｜ 喷放 @ 34s ｜ 峰值 @ 141s。</div>
+    </div>
+    <div class="tabpane" id="pane-metric">
+      <div id="metricBox">
+   <div class="metric"><span>最大温度 T<sub>max</sub></span><span class="v">568 ℃</span></div>
+   <div class="metric"><span>温升 ΔT (T<sub>max</sub>−环境)</span><span class="v">543 ℃</span></div>
+   <div class="metric"><span>最大温差 ΔT<sub>max</sub></span><span class="v">506 ℃</span></div>
+   <div class="metric"><span>最大温升速率 dT/dt</span><span class="v">1515 ℃/min</span></div>
+   <div class="metric"><span>热传播延迟 Δt<sub>prop</sub></span><span class="v">26 s</span></div>
+   <div class="metric"><span>冷却能耗 E<sub>cool</sub></span><span class="v">1663.5 kJ</span></div>
+   <div class="metric"><span>触发→失控时刻</span><span class="v">34 s</span></div>
+   <div class="metric"><span>喷放时刻</span><span class="v">34 s</span></div>
+   <div class="metric"><span>气体峰值(相对)</span><span class="v">1.11</span></div>
+   <div class="metric"><span>是否传播</span><span class="v">是</span></div></div>
+      <div class="kv" style="margin-top:8px;border-top:1px dashed var(--line);padding-top:6px">
+        <b>模型方程</b><br>
+        C<sub>th</sub>·dT/dt = Q<sub>gen</sub> + Q<sub>rxn</sub> − Q<sub>loss</sub> − Q<sub>cool</sub><br>
+        Q<sub>rxn</sub> = H·A·exp(−E<sub>a</sub>/RT)·x（Arrhenius，x 为剩余反应物）<br>
+        模组热网络：电芯间以热导 G 传递，G=G<sub>0</sub>(1−0.85·隔热)。
+      </div>
+    </div>
+    <div class="tabpane" id="pane-fmea">
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <button class="btn" id="btnFmeaAdd">+ 新增失效模式</button>
+        <button class="btn" id="btnFmeaDel">− 删除末行</button>
+      </div>
+      <div class="fmea-wrap" style="">
+        <table id="fmeaTable">
+          <thead><tr><th>序号</th><th>失效模式</th><th>失效原因</th><th>失效影响</th><th>S</th><th>O</th><th>D</th><th>RPN</th><th>建议措施</th></tr></thead>
+          <tbody id="fmeaBody"><tr>
+    <td>1</td>
+    <td><input data-i="0" data-f="mode" value="防护舱联锁机构失效" style=""></td>
+    <td><input data-i="0" data-f="cause" value="继电器粘连/传感器故障" style=""></td>
+    <td><input data-i="0" data-f="effect" value="试验无法紧急制动" style=""></td>
+    <td><input data-i="0" data-f="S" value="4" size="2" style=""></td>
+    <td><input data-i="0" data-f="O" value="2" size="2" style=""></td>
+    <td><input data-i="0" data-f="D" value="2" size="2" style=""></td>
+    <td><b style="color:#ff4d5e">16</b></td>
+    <td><input data-i="0" data-f="action" value="双冗余硬联锁+独立供电" style=""></td>
+  </tr><tr>
+    <td>2</td>
+    <td><input data-i="1" data-f="mode" value="舱门未关或误开" style=""></td>
+    <td><input data-i="1" data-f="cause" value="人员误操作" style=""></td>
+    <td><input data-i="1" data-f="effect" value="高温气体喷出伤人" style=""></td>
+    <td><input data-i="1" data-f="S" value="5" size="2" style=""></td>
+    <td><input data-i="1" data-f="O" value="2" size="2" style=""></td>
+    <td><input data-i="1" data-f="D" value="2" size="2" style=""></td>
+    <td><b style="color:#ff4d5e">20</b></td>
+    <td><input data-i="1" data-f="action" value="门联锁与远程启动硬绑定" style=""></td>
+  </tr><tr>
+    <td>3</td>
+    <td><input data-i="2" data-f="mode" value="触发功率设置过大" style=""></td>
+    <td><input data-i="2" data-f="cause" value="参数错误" style=""></td>
+    <td><input data-i="2" data-f="effect" value="超工况喷射/爆燃" style=""></td>
+    <td><input data-i="2" data-f="S" value="5" size="2" style=""></td>
+    <td><input data-i="2" data-f="O" value="1" size="2" style=""></td>
+    <td><input data-i="2" data-f="D" value="3" size="2" style=""></td>
+    <td><b style="color:#ffb020">15</b></td>
+    <td><input data-i="2" data-f="action" value="触发功率上限+二次确认" style=""></td>
+  </tr><tr>
+    <td>4</td>
+    <td><input data-i="3" data-f="mode" value="冷却系统失效" style=""></td>
+    <td><input data-i="3" data-f="cause" value="泵/风机故障" style=""></td>
+    <td><input data-i="3" data-f="effect" value="热蔓延加速" style=""></td>
+    <td><input data-i="3" data-f="S" value="4" size="2" style=""></td>
+    <td><input data-i="3" data-f="O" value="2" size="2" style=""></td>
+    <td><input data-i="3" data-f="D" value="2" size="2" style=""></td>
+    <td><b style="color:#ff4d5e">16</b></td>
+    <td><input data-i="3" data-f="action" value="冗余冷却+流量监测" style=""></td>
+  </tr><tr>
+    <td>5</td>
+    <td><input data-i="4" data-f="mode" value="气体传感器失效" style=""></td>
+    <td><input data-i="4" data-f="cause" value="校准漂移" style=""></td>
+    <td><input data-i="4" data-f="effect" value="漏报烟气风险" style=""></td>
+    <td><input data-i="4" data-f="S" value="4" size="2" style=""></td>
+    <td><input data-i="4" data-f="O" value="2" size="2" style=""></td>
+    <td><input data-i="4" data-f="D" value="3" size="2" style=""></td>
+    <td><b style="color:#ff4d5e">24</b></td>
+    <td><input data-i="4" data-f="action" value="冗余探测+定期标定" style=""></td>
+  </tr><tr>
+    <td>6</td>
+    <td><input data-i="5" data-f="mode" value="远程停机指令失效" style=""></td>
+    <td><input data-i="5" data-f="cause" value="通信中断" style=""></td>
+    <td><input data-i="5" data-f="effect" value="无法紧急停机" style=""></td>
+    <td><input data-i="5" data-f="S" value="5" size="2" style=""></td>
+    <td><input data-i="5" data-f="O" value="1" size="2" style=""></td>
+    <td><input data-i="5" data-f="D" value="2" size="2" style=""></td>
+    <td><b style="color:#ffb020">10</b></td>
+    <td><input data-i="5" data-f="action" value="独立硬线急停按钮" style=""></td>
+  </tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="tabpane" id="pane-report">
+      <div class="kv" id="reportKV"></div>
+      <div class="actions">
+        <button class="btn primary" id="btnGenReport">生成测试报告</button>
+        <button class="btn" id="btnDlReport">下载报告(HTML)</button>
+      </div>
+      <div id="reportPreview" style="margin-top:8px"></div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">本项目为「人工智能+」动力电池实验室安全与储能系统设计虚拟仿真实验教学方案 · 实验02 · 虚拟训练专用</div>
+<div id="loading" style="display: none;">正在加载虚拟仿真引擎…</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   实验02 虚拟仿真引擎（已离线数值标定）
+   电芯集中参数热模型 + 模组热网络 + 气体/烟气简化模型
+   ========================================================================= */
+const Rgas=8.314;
+const CELL={
+  LFP:{name:'磷酸铁锂(LFP)',Ea:95000,H:110000,Vnom:3.2,onset:110,color:'#2fae6e',note:'热稳定性好，触发温度高'},
+  NMC:{name:'三元(NMC)',Ea:82000,H:130000,Vnom:3.7,onset:85,color:'#2f8fd0',note:'能量密度高，热失控门槛低'},
+  NCA:{name:'三元高镍(NCA)',Ea:78000,H:150000,Vnom:3.6,onset:80,color:'#9b59b6',note:'镍含量高，最易热失控'}
+};
+function simulate(p){
+  const rows=p.rows, cols=p.cols, N=rows*cols;
+  const ct=CELL[p.cellType]||CELL.NMC;
+  const Cth=250, hA=0.06, ambient=p.ambient||25, A=1e10, rMax=0.05;
+  const H_eff=ct.H*(0.5+0.5*(p.SOC||1.0));
+  const onset=ct.onset;
+  let hc;
+  if(p.cooling==='natural') hc=0.20;
+  else if(p.cooling==='air') hc=0.6+0.5*(p.coolingPower||3);
+  else hc=2.0+2.0*(p.coolingPower||3);
+  const Tcool=p.coolantTemp||25;
+  const G0=2.0, G=G0*(1-(p.insulation||0)*0.85);
+  const dt=0.2, maxT=2000, steps=Math.floor(maxT/dt);
+  const T=new Array(N).fill(ambient), x=new Array(N).fill(1.0);
+  let E_cool=0, gas=0, t_onset=null, t_prop=null, t_vent=null, ventIdx=-1;
+  let runMaxT=ambient, runMaxUniform=0, t_peakT=0, dTdtPeak=0;
+  const trig=p.triggerCell!=null?p.triggerCell:0;
+  const rec={time:[],T:[],X:[],V:[],gas:[],P:[]};
+  let lastRec=0;
+  const Vnom=ct.Vnom;
+  for(let s=0;s<=steps;s++){
+    const t=s*dt;
+    const dT=new Array(N).fill(0);
+    let gasRateNow=0;
+    for(let i=0;i<N;i++){
+      const r=Math.floor(i/cols), c=i%cols;
+      let Qgen=0.15, Qrxn=0, Qloss=hA*(T[i]-ambient), Qcool=0, Qheat=0;
+      let rate=A*Math.exp(-ct.Ea/(Rgas*(T[i]+273.15)))*x[i];
+      if(rate>rMax) rate=rMax;
+      let dxeff=Math.min(rate*dt, x[i]);
+      x[i]-=dxeff;
+      Qrxn=H_eff*(dxeff/dt);
+      if(i===trig){
+        if(p.triggerMode==='external'){ if(T[i]<onset+60) Qheat=(p.triggerPower||400); }
+        else if(p.triggerMode==='overcharge'){ Qgen+=(p.triggerPower||120); }
+        else if(p.triggerMode==='internal'){ if(t<20) Qheat=1200; }
+        else if(p.triggerMode==='nail'){ Qheat=(p.triggerPower||700); } /* 钢针内短路：持续强局部焦耳热 */
+      } else if(p.triggerMode==='overcharge'){ Qgen+=(p.triggerPower||120)*0.3; }
+      if(p.cooling!=='none' && T[i]>Tcool){ Qcool=hc*(T[i]-Tcool); E_cool+=Qcool*dt; }
+      let Qcond=0;
+      if(c>0) Qcond+=G*(T[i-1]-T[i]);
+      if(c<cols-1) Qcond+=G*(T[i+1]-T[i]);
+      if(r>0) Qcond+=G*(T[i-cols]-T[i]);
+      if(r<rows-1) Qcond+=G*(T[i+cols]-T[i]);
+      let dTi=(Qgen+Qrxn - Qloss - Qcool + Qheat + Qcond)/Cth;
+      if(dTi>500)dTi=500; if(dTi<-500)dTi=-500;
+      dT[i]=dTi;
+      if(T[i]>onset && x[i]<0.98){ gasRateNow += 6.0*rate; if(t_vent===null){t_vent=t; ventIdx=i;} }
+    }
+    const exhaust=0.2+(p.exhaust||0.5);
+    gas += (gasRateNow - exhaust*gas)*dt; if(gas<0)gas=0;
+    for(let i=0;i<N;i++){ T[i]+=dT[i]*dt; if(T[i]>1200)T[i]=1200; if(T[i]<ambient-1)T[i]=ambient-1; }
+    const mx=Math.max(...T), mn=Math.min(...T);
+    if(mx>runMaxT){ runMaxT=mx; t_peakT=t; }
+    if(mx-mn>runMaxUniform) runMaxUniform=mx-mn;
+    if(t_onset===null && T[trig]>=onset) t_onset=t;
+    if(t_prop===null && t_onset!==null){ for(let i=0;i<N;i++){ if(i!==trig && T[i]>=onset){ t_prop=t; break; } } }
+    if(s-lastRec>=9){
+      rec.time.push(+t.toFixed(1));
+      rec.T.push(T.slice());
+      rec.X.push(x.slice());
+      rec.gas.push(+gas.toFixed(3));
+      rec.P.push(+(101.3+8*gas).toFixed(2));
+      const Varr=T.map((_,i)=>+(Vnom*(1-0.45*(1-x[i]))).toFixed(3));
+      rec.V.push(Varr);
+      if(rec.T.length>1){ const a=rec.T[rec.T.length-1], b=rec.T[rec.T.length-2];
+        const v=(Math.max(...a)-Math.max(...b))/((rec.time[rec.time.length-1]-rec.time[rec.time.length-2]))*60;
+        if(v>dTdtPeak)dTdtPeak=v; }
+      lastRec=s;
+    }
+    if(t>200){ let maxdT=0,maxd=0; for(let i=0;i<N;i++){maxdT=Math.max(maxdT,Math.abs(dT[i])); maxd=Math.max(maxd,T[i]-ambient);} if(maxdT<0.01 && maxd<1.0) break; }
+  }
+  const dtprop=(t_prop!==null&&t_onset!==null)?+(t_prop-t_onset).toFixed(1):null;
+  const metrics={
+    Tmax:+runMaxT.toFixed(0),
+    t_peakT:+t_peakT.toFixed(0),
+    dTdtMax:+dTdtPeak.toFixed(0),
+    dTuniformMax:+runMaxUniform.toFixed(0),
+    dTrise:+(runMaxT-ambient).toFixed(0),
+    dtprop:dtprop,
+    E_cool:+(E_cool/1000).toFixed(1),
+    t_onset:t_onset?+t_onset.toFixed(0):null,
+    t_prop:t_prop?+t_prop.toFixed(0):null,
+    t_vent:t_vent?+t_vent.toFixed(0):null,
+    gasMax:+Math.max(...rec.gas).toFixed(2),
+    propagated: dtprop!==null,
+    N:N, ventIdx:ventIdx, onset:onset
+  };
+  return {rec, metrics, params:Object.assign({},p), cellType:ct, triggerCell:trig, rows, cols};
+}
+
+/* =========================================================================
+   全局状态
+   ========================================================================= */
+const S={
+  p:{cellType:'NMC',rows:2,cols:4,SOC:1.0,ambient:25,cooling:'air',coolingPower:3,coolantTemp:25,
+     insulation:0.2,exhaust:0.5,triggerCell:0,triggerMode:'external',triggerPower:400,
+     sensorsTempPerCell:true,gasSensors:2,pressureSensors:1,sampling:2,thermalImaging:true,
+     alarmT:150,alarmP:115,alarmGas:1.0,actions:{shutdown:true,isolate:true,vent:true}},
+  faultA:false, faultB:false, interlockFailed:false,
+  step:1, completed:new Set(), visited:new Set([1]),
+  sim:null, preview:null, simOpt:null, peakFrame:0, frame:0, playing:false,
+  dispT:null, tween:0.06,
+  scores:{design:0,safety:0,analysis:0,optimize:0,report:0},
+  branch:null, interlock:'pending', confirmA:false, confirmB:false,
+  aiValid:null, startAllowed:false, fmea:[], t0:Date.now(), submitted:false,
+  bypassAttempt:false, matrix:0, opt:null, cmp:null,
+  viewMode:'bar', thermalOn:true, labScene:true, evMode:true, mode:'sandbox'
+};
+
+/* =========================================================================
+   三维电池包可视化（柱状升温 / 热扩散渐变 两种形式）
+   ========================================================================= */
+const sceneCv=document.getElementById('scene3d');
+const sctx=sceneCv.getContext('2d');
+let thermalOn=true;
+function tempCol(T){const lo=25,hi=700;let f=Math.max(0,Math.min(1,(T-lo)/(hi-lo)));
+  // 赛博热成像渐变：冷青 -> 蓝 -> 紫 -> 品红 -> 炽白
+  const stops=[[188,90,52],[212,95,50],[255,92,55],[300,95,58],[332,98,62],[8,100,66],[40,100,72]];
+  const x=f*(stops.length-1);const i=Math.floor(x);const t=x-i;
+  const a=stops[i],b=stops[Math.min(i+1,stops.length-1)];
+  return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t];}
+function tempCss(T,a){const [h,s,l]=tempCol(T);return `hsla(${h},${s}%,${l}%,${a==null?1:a})`;}
+function shadeCss(T,f){const [h,s,l]=tempCol(T);return `hsl(${h},${s}%,${Math.max(10,Math.min(80,l+f*30))}%)`;}
+/* ===== 温度云图连续色场（jet/turbo 风格，25℃蓝 → 1200℃炽白）===== */
+function thermCol(T){
+  const stops=[
+    [25,[ 36, 92,205]],   // 深蓝（环境）
+    [120,[ 28,176,228]],  // 青
+    [220,[ 38,200,128]],  // 绿
+    [320,[165,215, 52]],  // 黄绿
+    [440,[242,206, 42]],  // 黄
+    [560,[246,150, 36]],  // 橙
+    [700,[232, 58, 46]],  // 红（热失控）
+    [880,[255, 82,120]],  // 品红
+    [1200,[255,238,212]]  // 炽白
+  ];
+  const T0=Math.max(stops[0][0],Math.min(stops[stops.length-1][0],T));
+  for(let i=0;i<stops.length-1;i++){
+    const t0=stops[i][0],c0=stops[i][1],t1=stops[i+1][0],c1=stops[i+1][1];
+    if(T0<=t1){const f=(T0-t0)/(t1-t0);return [0,1,2].map(k=>Math.round(c0[k]+(c1[k]-c0[k])*f));}
+  }
+  return stops[stops.length-1][1].slice();
+}
+function thermCss(T,a){const [r,g,b]=thermCol(T);return `rgba(${r},${g},${b},${a==null?1:a})`;}
+function thermShade(T,f){const [r,g,b]=thermCol(T);const k=Math.max(0,Math.min(1,1+f));return `rgb(${Math.round(r*k)},${Math.round(g*k)},${Math.round(b*k)})`;}
+function cellTempAt(ri,ci){const temps=currentTemps();const rows=SC.rows,cols=SC.cols;if(!temps)return S.p.ambient;const r=Math.max(0,Math.min(rows-1,ri)),c=Math.max(0,Math.min(cols-1,ci));return temps[r*cols+c];}
+function sampleT(fr,fc){const rows=SC.rows,cols=SC.cols;const r0=Math.max(0,Math.min(rows-1,Math.floor(fr))),r1=Math.min(rows-1,r0+1),c0=Math.max(0,Math.min(cols-1,Math.floor(fc))),c1=Math.min(cols-1,c0+1);const frf=Math.max(0,Math.min(1,fr-r0)),fcf=Math.max(0,Math.min(1,fc-c0));const t00=cellTempAt(r0,c0),t10=cellTempAt(r0,c1),t01=cellTempAt(r1,c0),t11=cellTempAt(r1,c1);return (t00*(1-fcf)+t10*fcf)*(1-frf)+(t01*(1-fcf)+t11*fcf)*frf;}
+function thermGradientCss(){const stops=[25,120,220,320,440,560,700,880,1200];return 'linear-gradient(90deg,'+stops.map(t=>`${thermCss(t)} ${Math.round((t-25)/(1200-25)*100)}%`).join(',')+')';}
+function updateSceneLegend(){
+  const bar=thermGradientCss();
+  const temps=currentTemps();let maxT=S.p.ambient;if(temps)for(const t of temps)if(t>maxT)maxT=t;
+  const pct=Math.max(0,Math.min(100,(maxT-25)/(1200-25)*100));
+  const note=(S.viewMode==='bar')?'柱高固定 · 颜色=温度云图':'辉光=热扩散 · 托盘温度场=云图';
+  document.getElementById('sceneLegend').innerHTML=
+    `<span class="cbar-label">温度°C</span><span class="cbar-wrap"><span class="cbar-box"><span class="cbar" style="background:${bar}"></span><span class="cbar-mark" style="left:${pct}%">▼</span></span><span class="cbar-ticks"><i>25</i><i>220</i><i>440</i><i>700</i><i>1200</i></span></span>`+
+    `<span class="mini">${note}</span>`+(S.viewMode==='bar'?'<span class="mini"> ▦=实体电池包</span>':'');
+}
+function projIso(x,y,z,U,OX,OY){return [OX+(x-y)*0.5*U, OY+(x+y)*0.30*U - z];}
+function peakFrame(sim){let bi=0,bv=-1;if(!sim||!sim.rec||!sim.rec.T)return 0;sim.rec.T.forEach((a,k)=>{const m=Math.max(...a);if(m>bv){bv=m;bi=k;}});return bi;}
+function rawTemps(){
+  const sim=S.playing?S.sim:(S.sim||S.preview);
+  if(!sim||!sim.rec||!sim.rec.T||!sim.rec.T.length) return null;
+  let f=S.frame; if(f>=sim.rec.T.length)f=sim.rec.T.length-1; if(f<0)f=0;
+  return sim.rec.T[f];
+}
+/* 显示温度 = 缓动后的过渡值（便于观察温变过程）；无过渡时回落到真实目标 */
+function currentTemps(){
+  if(S.dispT) return S.dispT;
+  return rawTemps();
+}
+function computePeak(){const sim=S.sim||S.preview;S.peakFrame=sim?peakFrame(sim):0;}
+/* ===================== 三维渲染：实验室场景 + 实体化电池包 ===================== */
+const MONO="'JetBrains Mono','Consolas',ui-monospace,monospace";
+const SC={U:40,OX:320,OY:120,RW:2.4,RD:2.4,WH:120,W:640,H:360,rows:2,cols:4};
+function P(x,y,z){return projIso(x,y,z,SC.U,SC.OX,SC.OY);}
+function roundRect(x,y,w,h,r){sctx.beginPath();sctx.moveTo(x+r,y);sctx.arcTo(x+w,y,x+w,y+h,r);sctx.arcTo(x+w,y+h,x,y+h,r);sctx.arcTo(x,y+h,x,y,r);sctx.arcTo(x,y,x+w,y,r);sctx.closePath();}
+function slab(x0,y0,x1,y1,z0,z1,fill,stroke){
+  const b0=P(x0,y0,z0),b1=P(x1,y0,z0),b2=P(x1,y1,z0),b3=P(x0,y1,z0);
+  const t0=P(x0,y0,z1),t1=P(x1,y0,z1),t2=P(x1,y1,z1),t3=P(x0,y1,z1);
+  sctx.fillStyle=fill;sctx.strokeStyle=stroke;sctx.lineWidth=1;
+  sctx.beginPath();sctx.moveTo(b1[0],b1[1]);sctx.lineTo(b2[0],b2[1]);sctx.lineTo(t2[0],t2[1]);sctx.lineTo(t1[0],t1[1]);sctx.closePath();sctx.fill();sctx.stroke();
+  sctx.beginPath();sctx.moveTo(b2[0],b2[1]);sctx.lineTo(b3[0],b3[1]);sctx.lineTo(t3[0],t3[1]);sctx.lineTo(t2[0],t2[1]);sctx.closePath();sctx.fill();sctx.stroke();
+  sctx.beginPath();sctx.moveTo(t0[0],t0[1]);sctx.lineTo(t1[0],t1[1]);sctx.lineTo(t2[0],t2[1]);sctx.lineTo(t3[0],t3[1]);sctx.closePath();sctx.fill();sctx.stroke();
+}
+function drawBox(cx,cy,z,sx,sy,sz,topCol,sideCol){
+  const b0=P(cx-sx,cy-sy,z),b1=P(cx+sx,cy-sy,z),b2=P(cx+sx,cy+sy,z),b3=P(cx-sx,cy+sy,z);
+  const t0=P(cx-sx,cy-sy,z+sz),t1=P(cx+sx,cy-sy,z+sz),t2=P(cx+sx,cy+sy,z+sz),t3=P(cx-sx,cy+sy,z+sz);
+  sctx.fillStyle=sideCol;sctx.beginPath();sctx.moveTo(b1[0],b1[1]);sctx.lineTo(b2[0],b2[1]);sctx.lineTo(t2[0],t2[1]);sctx.lineTo(t1[0],t1[1]);sctx.closePath();sctx.fill();
+  sctx.beginPath();sctx.moveTo(b2[0],b2[1]);sctx.lineTo(b3[0],b3[1]);sctx.lineTo(t3[0],t3[1]);sctx.lineTo(t2[0],t2[1]);sctx.closePath();sctx.fill();
+  sctx.fillStyle=topCol;sctx.beginPath();sctx.moveTo(t0[0],t0[1]);sctx.lineTo(t1[0],t1[1]);sctx.lineTo(t2[0],t2[1]);sctx.lineTo(t3[0],t3[1]);sctx.closePath();sctx.fill();
+}
+/* 填充单个四边形面（壳体玻璃 / 路面 / 车身等） */
+function quad(a,b,c,d,fill,stroke,lw){
+  sctx.beginPath();sctx.moveTo(a[0],a[1]);sctx.lineTo(b[0],b[1]);sctx.lineTo(c[0],c[1]);sctx.lineTo(d[0],d[1]);sctx.closePath();
+  if(fill){sctx.fillStyle=fill;sctx.fill();}
+  if(stroke){sctx.strokeStyle=stroke;sctx.lineWidth=lw||1;sctx.stroke();}
+}
+/* 实体化电芯：金属外壳 + 顶盖高光 + 正/负电极柱 + 温度标注 */
+function drawCell3D(ci,ri,T,idx){
+  const cx=ci+0.5, cy=ri+0.5, hx=0.46, hy=0.46, U=SC.U;
+  const tNorm=Math.max(0,Math.min(1,(T-25)/675));
+  const col=thermCss(T);
+  const h=(S.viewMode==='bar')?(12+2.6*U):(0.72*U);
+  const b0=P(cx-hx,cy-hy,0),b1=P(cx+hx,cy-hy,0),b2=P(cx+hx,cy+hy,0),b3=P(cx-hx,cy+hy,0);
+  const t0=P(cx-hx,cy-hy,h),t1=P(cx+hx,cy-hy,h),t2=P(cx+hx,cy+hy,h),t3=P(cx-hx,cy+hy,h);
+  sctx.fillStyle=thermShade(T,-0.38);sctx.beginPath();sctx.moveTo(b1[0],b1[1]);sctx.lineTo(b2[0],b2[1]);sctx.lineTo(t2[0],t2[1]);sctx.lineTo(t1[0],t1[1]);sctx.closePath();sctx.fill();
+  sctx.fillStyle=thermShade(T,-0.24);sctx.beginPath();sctx.moveTo(b2[0],b2[1]);sctx.lineTo(b3[0],b3[1]);sctx.lineTo(t3[0],t3[1]);sctx.lineTo(t2[0],t2[1]);sctx.closePath();sctx.fill();
+  sctx.fillStyle=(S.viewMode==='gradient'&&!thermalOn)?'#c4d2e2':col;sctx.beginPath();sctx.moveTo(t0[0],t0[1]);sctx.lineTo(t1[0],t1[1]);sctx.lineTo(t2[0],t2[1]);sctx.lineTo(t3[0],t3[1]);sctx.closePath();sctx.fill();
+  const ix=0.24;const i0=P(cx-hx*(1-ix),cy-hy*(1-ix),h),i1=P(cx+hx*(1-ix),cy-hy*(1-ix),h),i2=P(cx+hx*(1-ix),cy+hy*(1-ix),h),i3=P(cx-hx*(1-ix),cy+hy*(1-ix),h);
+  sctx.fillStyle='rgba(255,255,255,.10)';sctx.beginPath();sctx.moveTo(i0[0],i0[1]);sctx.lineTo(i1[0],i1[1]);sctx.lineTo(i2[0],i2[1]);sctx.lineTo(i3[0],i3[1]);sctx.closePath();sctx.fill();
+  const nz=0.16*U;
+  drawBox(cx+hx*0.5,cy+hy*0.5,h,0.10,0.10,nz,'#eef3fa','#9fb0c6');
+  drawBox(cx-hx*0.5,cy-hy*0.5,h,0.10,0.10,nz,'#cdd6e4','#8a99ad');
+  sctx.strokeStyle='rgba(34,211,238,.30)';sctx.lineWidth=1;sctx.beginPath();sctx.moveTo(t0[0],t0[1]);sctx.lineTo(t1[0],t1[1]);sctx.lineTo(t2[0],t2[1]);sctx.lineTo(t3[0],t3[1]);sctx.closePath();sctx.stroke();
+  if(S.p.sensorsTempPerCell){sctx.fillStyle='#5ef2ff';sctx.shadowColor='#22d3ee';sctx.shadowBlur=6;sctx.beginPath();sctx.arc(t3[0],t3[1],2,0,7);sctx.fill();sctx.shadowBlur=0;}
+  if(idx===S.p.triggerCell){sctx.strokeStyle='#ff2d78';sctx.lineWidth=2;sctx.shadowColor='#ff2d78';sctx.shadowBlur=12;sctx.strokeRect(Math.min(t0[0],t2[0]),Math.min(t0[1],t2[1]),Math.abs(t2[0]-t0[0]),Math.abs(t2[1]-t0[1]));sctx.shadowBlur=0;sctx.lineWidth=1;}
+  if(tNorm>0.12){
+    sctx.save();sctx.globalCompositeOperation='lighter';
+    const cxm=(t0[0]+t2[0])/2, cym=(t0[1]+t2[1])/2, r=U*1.5;
+    const [gh,gg,gb]=thermCol(T);
+    const grd=sctx.createRadialGradient(cxm,cym,2,cxm,cym,r);
+    grd.addColorStop(0,`rgba(${gh},${gg},${gb},${0.55*tNorm})`);grd.addColorStop(1,`rgba(${gh},${gg},${gb},0)`);
+    sctx.fillStyle=grd;sctx.beginPath();sctx.arc(cxm,cym,r,0,7);sctx.fill();sctx.restore();
+  }
+  if(U>=44){sctx.fillStyle='rgba(226,238,255,.82)';sctx.font='9px '+MONO;sctx.fillText(Math.round(T)+'°',(t0[0]+t2[0])/2-9,(t0[1]+t2[1])/2+3);}
+}
+/* 实验室房间：双面墙 + 地面 + 墙面装饰 + 顶喷 */
+function drawLabRoom(){
+  const W=SC.W,H=SC.H,cols=SC.cols,rows=SC.rows,RW=SC.RW,RD=SC.RD,WH=SC.WH;
+  const A=P(-RW,-RD,0),B=P(cols+RW,-RD,0),C=P(cols+RW,rows+RD,0),D=P(-RW,rows+RD,0);
+  const At=P(-RW,-RD,WH),Bt=P(cols+RW,-RD,WH),Dt=P(-RW,rows+RD,WH);
+  sctx.fillStyle='rgba(10,20,38,.94)';sctx.beginPath();sctx.moveTo(A[0],A[1]);sctx.lineTo(D[0],D[1]);sctx.lineTo(Dt[0],Dt[1]);sctx.lineTo(At[0],At[1]);sctx.closePath();sctx.fill();
+  sctx.fillStyle='rgba(13,24,44,.94)';sctx.beginPath();sctx.moveTo(A[0],A[1]);sctx.lineTo(B[0],B[1]);sctx.lineTo(Bt[0],Bt[1]);sctx.lineTo(At[0],At[1]);sctx.closePath();sctx.fill();
+  sctx.strokeStyle='rgba(34,211,238,.5)';sctx.lineWidth=2;
+  sctx.beginPath();sctx.moveTo(At[0],At[1]);sctx.lineTo(Dt[0],Dt[1]);sctx.stroke();
+  sctx.beginPath();sctx.moveTo(At[0],At[1]);sctx.lineTo(Bt[0],Bt[1]);sctx.stroke();
+  sctx.fillStyle='rgba(255,176,32,.10)';
+  sctx.beginPath();sctx.moveTo(A[0],A[1]);sctx.lineTo(D[0],D[1]);sctx.lineTo(Dt[0],Dt[1]);sctx.lineTo(At[0],At[1]);sctx.closePath();sctx.fill();
+  sctx.beginPath();sctx.moveTo(A[0],A[1]);sctx.lineTo(B[0],B[1]);sctx.lineTo(Bt[0],Bt[1]);sctx.lineTo(At[0],At[1]);sctx.closePath();sctx.fill();
+  const ls0=P(-RW,-RD,WH*0.78),ls1=P(-RW,rows+RD,WH*0.78);
+  sctx.strokeStyle='rgba(34,211,238,.35)';sctx.lineWidth=2;sctx.beginPath();sctx.moveTo(ls0[0],ls0[1]);sctx.lineTo(ls1[0],ls1[1]);sctx.stroke();
+  sctx.strokeStyle='rgba(34,211,238,.22)';sctx.lineWidth=1;
+  for(let k=0;k<5;k++){const f=0.30+0.11*k;const a=P(cols+RW,-RD,WH*f),b=P(cols+RW,rows+RD,WH*f);sctx.beginPath();sctx.moveTo(a[0],a[1]);sctx.lineTo(b[0],b[1]);sctx.stroke();}
+  sctx.fillStyle='rgba(94,242,255,.55)';sctx.font='10px '+MONO;
+  const sg=P(-RW,rows*0.5,WH*0.55);sctx.fillText('电池安全实验室',sg[0]+4,sg[1]);
+  const fg=sctx.createLinearGradient(0,A[1],0,C[1]);fg.addColorStop(0,'rgba(8,16,30,.96)');fg.addColorStop(1,'rgba(4,9,18,.96)');
+  sctx.fillStyle=fg;sctx.beginPath();sctx.moveTo(A[0],A[1]);sctx.lineTo(B[0],B[1]);sctx.lineTo(C[0],C[1]);sctx.lineTo(D[0],D[1]);sctx.closePath();sctx.fill();
+  sctx.strokeStyle='rgba(34,211,238,.08)';sctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const t=i/8;const x=-RW+(cols+2*RW)*t;const a=P(x,-RD,0),b=P(x,rows+RD,0);sctx.beginPath();sctx.moveTo(a[0],a[1]);sctx.lineTo(b[0],b[1]);sctx.stroke();}
+  for(let j=0;j<=8;j++){const t=j/8;const y=-RD+(rows+2*RD)*t;const a=P(-RW,y,0),b=P(cols+RW,y,0);sctx.beginPath();sctx.moveTo(a[0],a[1]);sctx.lineTo(b[0],b[1]);sctx.stroke();}
+  sctx.strokeStyle='rgba(34,211,238,.3)';sctx.lineWidth=1.5;sctx.beginPath();sctx.moveTo(A[0],A[1]);sctx.lineTo(B[0],B[1]);sctx.lineTo(C[0],C[1]);sctx.lineTo(D[0],D[1]);sctx.closePath();sctx.stroke();
+  const sp=P(-RW,-RD,WH);
+  sctx.fillStyle='#3a4a66';sctx.beginPath();sctx.arc(sp[0],sp[1],4,0,7);sctx.fill();
+  sctx.fillStyle='rgba(120,200,255,.5)';sctx.beginPath();sctx.arc(sp[0],sp[1]+5,3,0,7);sctx.fill();
+}
+/* 防护试验舱（玻璃舱 · 后半） */
+function drawChamberBack(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U,m=0.5;
+  const cA=P(-m,-m,0),cD=P(-m,rows+m,0),cB=P(cols+m,-m,0);
+  const CHf=(S.viewMode==='bar'?(12+2.6*U)+0.5*U:0.72*U+0.5*U);
+  const cAt=P(-m,-m,CHf),cDt=P(-m,rows+m,CHf),cBt=P(cols+m,-m,CHf);
+  sctx.fillStyle='rgba(34,211,238,.06)';
+  sctx.beginPath();sctx.moveTo(cA[0],cA[1]);sctx.lineTo(cD[0],cD[1]);sctx.lineTo(cDt[0],cDt[1]);sctx.lineTo(cAt[0],cAt[1]);sctx.closePath();sctx.fill();
+  sctx.beginPath();sctx.moveTo(cA[0],cA[1]);sctx.lineTo(cB[0],cB[1]);sctx.lineTo(cBt[0],cBt[1]);sctx.lineTo(cAt[0],cAt[1]);sctx.closePath();sctx.fill();
+}
+/* 防护试验舱（玻璃舱 · 前半 + 框架 + 门 + 警示基环） */
+function drawChamberFront(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U,m=0.5;
+  const cA=P(-m,-m,0),cB=P(cols+m,-m,0),cC=P(cols+m,rows+m,0),cD=P(-m,rows+m,0);
+  const CHf=(S.viewMode==='bar'?(12+2.6*U)+0.5*U:0.72*U+0.5*U);
+  const cAt=P(-m,-m,CHf),cBt=P(cols+m,-m,CHf),cCt=P(cols+m,rows+m,CHf),cDt=P(-m,rows+m,CHf);
+  sctx.fillStyle='rgba(34,211,238,.05)';
+  sctx.beginPath();sctx.moveTo(cD[0],cD[1]);sctx.lineTo(cC[0],cC[1]);sctx.lineTo(cCt[0],cCt[1]);sctx.lineTo(cDt[0],cDt[1]);sctx.closePath();sctx.fill();
+  sctx.beginPath();sctx.moveTo(cB[0],cB[1]);sctx.lineTo(cC[0],cC[1]);sctx.lineTo(cCt[0],cCt[1]);sctx.lineTo(cBt[0],cBt[1]);sctx.closePath();sctx.fill();
+  sctx.strokeStyle='rgba(34,211,238,.55)';sctx.lineWidth=1.6;
+  const edge=(a,b)=>{sctx.beginPath();sctx.moveTo(a[0],a[1]);sctx.lineTo(b[0],b[1]);sctx.stroke();};
+  edge(cA,cB);edge(cB,cC);edge(cC,cD);edge(cD,cA);
+  edge(cAt,cBt);edge(cBt,cCt);edge(cCt,cDt);edge(cDt,cAt);
+  edge(cA,cAt);edge(cB,cBt);edge(cC,cCt);edge(cD,cDt);
+  const dy0=0.18*rows,dy1=0.82*rows,dz0=0,dz1=CHf*0.92;
+  const dA=P(cols+m,dy0,dz0),dB=P(cols+m,dy1,dz0),dC=P(cols+m,dy1,dz1),dD=P(cols+m,dy0,dz1);
+  sctx.fillStyle='rgba(94,242,255,.10)';sctx.strokeStyle='rgba(94,242,255,.6)';sctx.lineWidth=1.2;
+  sctx.beginPath();sctx.moveTo(dA[0],dA[1]);sctx.lineTo(dB[0],dB[1]);sctx.lineTo(dC[0],dC[1]);sctx.lineTo(dD[0],dD[1]);sctx.closePath();sctx.fill();sctx.stroke();
+  const wA=P(cols+m,dy0+0.1*rows,dz1*0.5),wB=P(cols+m,dy1-0.1*rows,dz1*0.5),wC=P(cols+m,dy1-0.1*rows,dz1*0.82),wD=P(cols+m,dy0+0.1*rows,dz1*0.82);
+  sctx.fillStyle='rgba(8,22,40,.6)';sctx.beginPath();sctx.moveTo(wA[0],wA[1]);sctx.lineTo(wB[0],wB[1]);sctx.lineTo(wC[0],wC[1]);sctx.lineTo(wD[0],wD[1]);sctx.closePath();sctx.fill();
+  slab(-m,-m,cols+m,rows+m,0,0.05*U,'rgba(255,176,32,.16)','rgba(255,176,32,.5)');
+}
+/* 电池包底座：液冷板 + 托盘 */
+function drawPackBase(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U;
+  if(S.p.cooling==='liquid'){
+    sctx.save();sctx.globalCompositeOperation='lighter';
+    const a=P(-0.05,-0.05,0),b=P(cols+0.05,-0.05,0),c=P(cols+0.05,rows+0.05,0),d=P(-0.05,rows+0.05,0);
+    sctx.fillStyle='rgba(40,160,255,.20)';sctx.beginPath();sctx.moveTo(a[0],a[1]);sctx.lineTo(b[0],b[1]);sctx.lineTo(c[0],c[1]);sctx.lineTo(d[0],d[1]);sctx.closePath();sctx.fill();
+    sctx.restore();
+    sctx.strokeStyle='rgba(80,200,255,.6)';sctx.lineWidth=1.4;sctx.stroke();
+  }
+  slab(-0.22,-0.22,cols+0.22,rows+0.22,0,0.14*U,'rgba(20,32,54,.95)','rgba(34,211,238,.5)');
+}
+/* 实体化电池包框架：立柱 + 顶框 + 母线 + 标签牌 */
+function drawLabelPlate(x,y){
+  const w=66,h=28;x=x-w/2;y=y-h-3;
+  sctx.fillStyle='rgba(8,16,30,.92)';sctx.strokeStyle='rgba(34,211,238,.6)';sctx.lineWidth=1.2;
+  roundRect(x,y,w,h,4);sctx.fill();sctx.stroke();
+  sctx.fillStyle='#5ef2ff';sctx.font='9px '+MONO;sctx.fillText('PACK · 模组',x+6,y+12);
+  sctx.fillStyle='rgba(94,242,255,.55)';
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++){if((i+j)%2===0)sctx.fillRect(x+w-15+i*4,y+6+j*4,3,3);}
+  sctx.fillStyle='rgba(150,180,210,.8)';sctx.font='8px '+MONO;sctx.fillText((CELL[S.p.cellType]?CELL[S.p.cellType].name:''),x+6,y+23);
+}
+function drawPackFrame(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U,m=0.22;
+  const FH=(S.viewMode==='bar'?(12+2.6*U)+0.45*U:0.72*U+0.45*U);
+  const corners=[[-m,-m],[cols+m,-m],[cols+m,rows+m],[-m,rows+m]];
+  for(const c of corners){
+    drawBox(c[0],c[1],0,0.06,0.06,FH,'#1b2c46','#0e1830');
+    const tp=P(c[0],c[1],FH);sctx.fillStyle='#22d3ee';sctx.shadowColor='#22d3ee';sctx.shadowBlur=8;sctx.beginPath();sctx.arc(tp[0],tp[1],2.5,0,7);sctx.fill();sctx.shadowBlur=0;
+  }
+  sctx.strokeStyle='rgba(34,211,238,.5)';sctx.lineWidth=2;
+  const top=[[-m,-m,FH],[cols+m,-m,FH],[cols+m,rows+m,FH],[-m,rows+m,FH]].map(c=>P(c[0],c[1],c[2]));
+  sctx.beginPath();sctx.moveTo(top[0][0],top[0][1]);for(let k=1;k<4;k++)sctx.lineTo(top[k][0],top[k][1]);sctx.closePath();sctx.stroke();
+  sctx.strokeStyle='rgba(190,205,230,.55)';sctx.lineWidth=2;
+  const zt=(S.viewMode==='bar'?(12+2.6*U):0.72*U)+0.10*U;
+  for(let ri=0;ri<rows;ri++){const a=P(0.2,ri+0.5,zt),b=P(cols-0.2,ri+0.5,zt);sctx.beginPath();sctx.moveTo(a[0],a[1]);sctx.lineTo(b[0],b[1]);sctx.stroke();}
+  const anc=P(cols/2,rows+m+0.03,0.30*U);drawLabelPlate(anc[0],anc[1]);
+}
+/* 实验室前景区：控制台 + 急停 + 应急隔离区 */
+function drawLabProps(){
+  const W=SC.W,H=SC.H,cols=SC.cols,rows=SC.rows,U=SC.U,RW=SC.RW,RD=SC.RD;
+  const conX=cols+RW-0.15,conY=rows+RD-0.15;
+  slab(conX-0.7,conY-0.42,conX+0.08,conY+0.08,0,0.42*U,'rgba(16,26,46,.92)','rgba(34,211,238,.4)');
+  const mz=0.42*U;
+  const mp0=P(conX-0.62,conY-0.05,mz+0.42*U),mp1=P(conX-0.05,conY-0.05,mz+0.42*U),mp2=P(conX-0.05,conY-0.05,mz+0.92*U),mp3=P(conX-0.62,conY-0.05,mz+0.92*U);
+  sctx.fillStyle='rgba(6,14,26,.92)';sctx.strokeStyle='rgba(34,211,238,.55)';sctx.lineWidth=1.2;
+  sctx.beginPath();sctx.moveTo(mp0[0],mp0[1]);sctx.lineTo(mp1[0],mp1[1]);sctx.lineTo(mp2[0],mp2[1]);sctx.lineTo(mp3[0],mp3[1]);sctx.closePath();sctx.fill();sctx.stroke();
+  sctx.fillStyle='rgba(34,211,238,.22)';sctx.fillRect(Math.min(mp0[0],mp2[0])+2,Math.min(mp0[1],mp2[1])+2,Math.abs(mp2[0]-mp0[0])-4,Math.abs(mp2[1]-mp0[1])-4);
+  sctx.fillStyle='#5ef2ff';sctx.font='7px '+MONO;sctx.fillText('AI 监控',mp0[0]+3,mp0[1]+10);
+  const esX=-RW+0.15,esY=rows+RD-0.15;
+  drawBox(esX,esY,0,0.10,0.10,0.5*U,'#3a0e16','#220810');
+  const eb=P(esX,esY,0.5*U);sctx.fillStyle='#ff4d5e';sctx.shadowColor='#ff4d5e';sctx.shadowBlur=7;sctx.beginPath();sctx.arc(eb[0],eb[1],3,0,7);sctx.fill();sctx.shadowBlur=0;
+  const e0=P(-RW+0.08,rows+RD-0.5,0),e1=P(-RW+0.08,rows+RD-0.08,0),e2=P(-RW+0.75,rows+RD-0.08,0),e3=P(-RW+0.75,rows+RD-0.5,0);
+  sctx.strokeStyle='rgba(255,77,94,.55)';sctx.setLineDash([6,4]);sctx.lineWidth=1.3;
+  sctx.beginPath();sctx.moveTo(e0[0],e0[1]);sctx.lineTo(e1[0],e1[1]);sctx.lineTo(e2[0],e2[1]);sctx.lineTo(e3[0],e3[1]);sctx.closePath();sctx.stroke();sctx.setLineDash([]);
+}
+/* 气体 / 烟气 */
+function drawGas(){
+  const sim=S.playing?S.sim:(S.sim||S.preview);
+  if(sim&&sim.rec.gas){let f=S.frame;if(f>=sim.rec.gas.length)f=sim.rec.gas.length-1;if(f>=0&&sim.rec.gas[f]>0.4){
+    const gg=Math.min(1,sim.rec.gas[f]/1.5);
+    const ctr=P(SC.cols/2,SC.rows/2,(S.viewMode==='bar'?2.8*SC.U:0.9*SC.U));
+    sctx.save();sctx.globalCompositeOperation='lighter';
+    sctx.fillStyle=`rgba(150,200,255,${0.20*gg})`;
+    for(let k=0;k<7;k++){const cx=ctr[0]+(Math.random()-0.5)*SC.cols*SC.U*0.8,cy=ctr[1]-10-Math.random()*30;sctx.beginPath();sctx.arc(cx,cy,14+Math.random()*12,0,7);sctx.fill();}
+    sctx.restore();
+  }}
+}
+/* 标题 / 联锁灯 / 图例 */
+function drawSceneLabels(){
+  const W=SC.W,H=SC.H,cols=SC.cols,rows=SC.rows,U=SC.U;
+  const dr=P(cols/2,rows+0.6,(S.viewMode==='bar'?2.8*U:0.9*U));
+  sctx.shadowColor=S.interlockFailed?'#ff4d5e':'#27ff9e';sctx.shadowBlur=12;
+  sctx.fillStyle=S.interlockFailed?'#ff4d5e':'#27ff9e';sctx.beginPath();sctx.arc(dr[0],dr[1],6,0,7);sctx.fill();sctx.shadowBlur=0;
+  sctx.fillStyle='#eaf6ff';sctx.font='9px '+MONO;sctx.fillText(S.interlockFailed?'✕ 联锁失效':'🔒 联锁正常',dr[0]+9,dr[1]+3);
+  sctx.fillStyle='rgba(94,242,255,.9)';sctx.font='11px '+MONO;sctx.shadowColor='#22d3ee';sctx.shadowBlur=6;
+  const scTitle=(S.viewMode==='bar'?'柱状温度云图':'热扩散渐变')+(S.evMode?' · 电动汽车底盘（你的车底电池）':' · 电池包（'+rows+'×'+cols+'）· 实验室试验舱');
+  sctx.fillText(scTitle,10,16);sctx.shadowBlur=0;
+  if(S.labScene){
+    sctx.fillStyle='rgba(150,200,255,.7)';sctx.font='9px '+MONO;sctx.fillText('远程控制室 / AI监控',W-118,16);
+    sctx.fillStyle='rgba(255,120,130,.85)';sctx.fillText('应急隔离区',10,H-8);
+  }
+  updateSceneLegend();
+}
+function drawSimpleGrid(){
+  const W=SC.W,H=SC.H;
+  sctx.save();sctx.strokeStyle='rgba(34,211,238,.08)';sctx.lineWidth=1;
+  for(let gx=-60;gx<=W+60;gx+=30){sctx.beginPath();sctx.moveTo(gx,0);sctx.lineTo(gx,H);sctx.stroke();}
+  for(let gy=0;gy<=H+30;gy+=30){sctx.beginPath();sctx.moveTo(0,gy);sctx.lineTo(W,gy);sctx.stroke();}
+  sctx.restore();
+}
+/* 试验舱地面温度场云图（舱内地坪，向外渐隐，热从电池包向外扩散） */
+function drawGroundHalo(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U;
+  if(!currentTemps())return;
+  const ext=Math.min(1.4,Math.max(cols,rows)*0.6);
+  sctx.save();
+  const g0=P(-ext,-ext,0.005),g1=P(cols+ext,-ext,0.005),g2=P(cols+ext,rows+ext,0.005),g3=P(-ext,rows+ext,0.005);
+  sctx.beginPath();sctx.moveTo(g0[0],g0[1]);sctx.lineTo(g1[0],g1[1]);sctx.lineTo(g2[0],g2[1]);sctx.lineTo(g3[0],g3[1]);sctx.closePath();sctx.clip();
+  const GS=4;
+  for(let ri=-1;ri<=rows;ri++)for(let ci=-1;ci<=cols;ci++)for(let si=0;si<GS;si++)for(let sj=0;sj<GS;sj++){
+    const dx=Math.max(0,-ci,ci-cols+1),dy=Math.max(0,-ri,ri-rows+1),dist=Math.hypot(dx,dy);
+    const fade=Math.max(0,1-dist/1.5); if(fade<=0.03)continue;
+    const u=ci+si/GS,v=ri+sj/GS;
+    const tv=sampleT(ri+(sj+0.5)/GS, ci+(si+0.5)/GS);
+    const b0=P(u,v,0.005),b1=P(u+1/GS,v,0.005),b2=P(u+1/GS,v+1/GS,0.005),b3=P(u,v+1/GS,0.005);
+    sctx.fillStyle=thermCss(tv,0.32*fade);
+    sctx.beginPath();sctx.moveTo(b0[0],b0[1]);sctx.lineTo(b1[0],b1[1]);sctx.lineTo(b2[0],b2[1]);sctx.lineTo(b3[0],b3[1]);sctx.closePath();sctx.fill();
+  }
+  sctx.restore();
+}
+/* 托盘温度云图（电池包底座顶面，按电芯温度双线性插值出连续热场） */
+function drawThermalTray(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U;
+  if(!currentTemps())return;
+  const SUB=5,z=0.145*U;
+  sctx.save();
+  const a0=P(-0.22,-0.22,z),a1=P(cols+0.22,-0.22,z),a2=P(cols+0.22,rows+0.22,z),a3=P(-0.22,rows+0.22,z);
+  sctx.beginPath();sctx.moveTo(a0[0],a0[1]);sctx.lineTo(a1[0],a1[1]);sctx.lineTo(a2[0],a2[1]);sctx.lineTo(a3[0],a3[1]);sctx.closePath();sctx.clip();
+  for(let ri=0;ri<rows;ri++)for(let ci=0;ci<cols;ci++)for(let si=0;si<SUB;si++)for(let sj=0;sj<SUB;sj++){
+    const u=ci+si/SUB,v=ri+sj/SUB;
+    const tv=sampleT(ri+(sj+0.5)/SUB, ci+(si+0.5)/SUB);
+    const b0=P(u,v,z),b1=P(u+1/SUB,v,z),b2=P(u+1/SUB,v+1/SUB,z),b3=P(u,v+1/SUB,z);
+    sctx.fillStyle=thermCss(tv,0.85);
+    sctx.beginPath();sctx.moveTo(b0[0],b0[1]);sctx.lineTo(b1[0],b1[1]);sctx.lineTo(b2[0],b2[1]);sctx.lineTo(b3[0],b3[1]);sctx.closePath();sctx.fill();
+  }
+  sctx.restore();
+}
+/* 画布内竖向温标（温度色标 + 刻度数值） */
+function drawTempScale(){
+  const W=SC.W,H=SC.H;
+  const bw=13, bh=Math.min(200,H*0.50);
+  const x=W-20, y0=H*0.18, y1=y0+bh;
+  sctx.save();
+  sctx.shadowBlur=0;sctx.shadowColor='transparent';
+  sctx.textAlign='right';sctx.textBaseline='alphabetic';
+  sctx.fillStyle='rgba(94,242,255,.95)';sctx.font='10px '+MONO;
+  sctx.fillText('温标 °C', x+bw, y0-9);
+  /* 渐变色条（顶=高温1200，底=低温25） */
+  const g=sctx.createLinearGradient(0,y1,0,y0);
+  for(let i=0;i<=12;i++){const T=25+(1200-25)*i/12;const [r,gg,b]=thermCol(T);g.addColorStop(i/12,`rgb(${r},${gg},${b})`);}
+  sctx.fillStyle=g;sctx.fillRect(x,y0,bw,bh);
+  sctx.strokeStyle='rgba(34,211,238,.6)';sctx.lineWidth=1;sctx.strokeRect(x,y0,bw,bh);
+  /* 刻度与数值 */
+  const ticks=[25,220,440,700,1200];
+  sctx.fillStyle='rgba(226,238,255,.92)';sctx.font='9px '+MONO;sctx.textAlign='right';
+  for(const t of ticks){
+    const f=(t-25)/(1200-25);
+    const ty=y1-f*bh;
+    sctx.strokeStyle='rgba(255,255,255,.55)';sctx.lineWidth=1;
+    sctx.beginPath();sctx.moveTo(x-3,ty);sctx.lineTo(x,ty);sctx.stroke();
+    sctx.fillText(t, x-6, ty+3);
+  }
+  sctx.restore();
+}
+/* 针刺穿透可视化：钢针自上方刺入触发电芯，穿刺点带温度色辉光与高温喷溅 */
+function drawNail(T){
+  const cols=SC.cols, trig=S.p.triggerCell; if(trig==null) return;
+  const ci=trig%cols, ri=Math.floor(trig/cols);
+  const cx=ci+0.5, cy=ri+0.5;
+  const h=(S.viewMode==='bar')?(12+2.6*SC.U):(0.72*SC.U);
+  const nx=cx+0.06, ny=cy+0.06;          // 略偏离几何中心，更像真实穿刺点
+  const topZ=h+30, tipZ=h*0.38;          // 针帽在电芯上方，针尖刺入电芯内部
+  const pTop=P(nx,ny,topZ), pTip=P(nx,ny,tipZ);
+  sctx.lineCap='round';
+  sctx.strokeStyle='#cfd8e6'; sctx.lineWidth=3; sctx.shadowColor='rgba(0,0,0,.45)'; sctx.shadowBlur=4;
+  sctx.beginPath(); sctx.moveTo(pTop[0],pTop[1]); sctx.lineTo(pTip[0],pTip[1]); sctx.stroke();
+  sctx.fillStyle='#aeb8c6'; sctx.beginPath(); sctx.arc(pTop[0],pTop[1],4,0,7); sctx.fill();
+  sctx.shadowBlur=0;
+  const tNorm=Math.max(0,Math.min(1,(T-25)/675));
+  if(tNorm>0.04){
+    sctx.save(); sctx.globalCompositeOperation='lighter';
+    const [r,g,b]=thermCol(T), R=12+tNorm*20;
+    const rg=sctx.createRadialGradient(pTip[0],pTip[1],1,pTip[0],pTip[1],R);
+    rg.addColorStop(0,`rgba(${r},${g},${b},${0.75*tNorm})`); rg.addColorStop(1,`rgba(${r},${g},${b},0)`);
+    sctx.fillStyle=rg; sctx.beginPath(); sctx.arc(pTip[0],pTip[1],R,0,7); sctx.fill();
+    sctx.restore();
+  }
+  if(tNorm>0.45){
+    sctx.save(); sctx.globalCompositeOperation='lighter';
+    sctx.fillStyle=`rgba(255,${(200-tNorm*150)|0},90,${0.55*tNorm})`;
+    for(let k=0;k<6;k++){const a=Math.random()*7, rr=4+Math.random()*12*tNorm;
+      sctx.beginPath(); sctx.arc(pTip[0]+Math.cos(a)*rr, pTip[1]-Math.random()*9, 1.4, 0,7); sctx.fill();}
+    sctx.restore();
+  }
+}
+/* ===== 生活化场景：电动汽车底盘（电池包作为可见底盘/滑板平台） ===== */
+function drawEVGround(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U;
+  const ext=Math.max(cols,rows)+2.6;
+  const a=P(-ext,-ext,0.004),b=P(cols+ext,-ext,0.004),c=P(cols+ext,rows+ext,0.004),d=P(-ext,rows+ext,0.004);
+  quad(a,b,c,d,'rgba(18,24,36,.96)','rgba(34,211,238,.10)',1);
+  sctx.strokeStyle='rgba(255,210,90,.5)';sctx.lineWidth=2;sctx.setLineDash([10,9]);
+  const l0=P(cols/2,-ext,0.006),l1=P(cols/2,rows+ext,0.006);
+  sctx.beginPath();sctx.moveTo(l0[0],l0[1]);sctx.lineTo(l1[0],l1[1]);sctx.stroke();sctx.setLineDash([]);
+}
+function drawEVBody(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U,m=0.22;
+  const h=(S.viewMode==='bar'?(12+2.6*U):(0.72*U));
+  const cxm=1.5, cym=1.5;
+  const bodyZ0=h+8, bodyH=0.9*U, roofZ=bodyZ0+bodyH, cabinH=0.5*U;
+  /* 车轮（4 角，接地） */
+  const ins=0.35;
+  const wheels=[[-cxm+ins,-cym+ins],[cols+cxm-ins,-cym+ins],[-cxm+ins,rows+cym-ins],[cols+cxm-ins,rows+cym-ins]];
+  for(const w of wheels){
+    const c=P(w[0],w[1],0);
+    sctx.fillStyle='rgba(10,12,16,.92)';sctx.beginPath();sctx.ellipse(c[0],c[1],0.5*U,0.34*U,0,0,7);sctx.fill();
+    sctx.fillStyle='rgba(120,130,145,.8)';sctx.beginPath();sctx.ellipse(c[0],c[1],0.22*U,0.15*U,0,0,7);sctx.fill();
+  }
+  /* 车身（半透壳体，电池包作为可见底盘） */
+  const gR0=P(cols+cxm,-cym,bodyZ0),gR1=P(cols+cxm,rows+cym,bodyZ0),gR2=P(cols+cxm,rows+cym,roofZ),gR3=P(cols+cxm,-cym,roofZ);
+  quad(gR0,gR1,gR2,gR3,'rgba(120,170,210,.10)','rgba(150,200,240,.45)',1.5);
+  const gB0=P(-cxm,rows+cym,bodyZ0),gB1=P(cols+cxm,rows+cym,bodyZ0),gB2=P(cols+cxm,rows+cym,roofZ),gB3=P(-cxm,rows+cym,roofZ);
+  quad(gB0,gB1,gB2,gB3,'rgba(120,170,210,.07)','rgba(150,200,240,.38)',1.5);
+  const gF0=P(-cxm,-cym,bodyZ0),gF1=P(cols+cxm,-cym,bodyZ0),gF2=P(cols+cxm,-cym,roofZ),gF3=P(-cxm,-cym,roofZ);
+  quad(gF0,gF1,gF2,gF3,'rgba(120,170,210,.05)','rgba(150,200,240,.30)',1.2);
+  const tA=P(-cxm,-cym,roofZ),tB=P(cols+cxm,-cym,roofZ),tC=P(cols+cxm,rows+cym,roofZ),tD=P(-cxm,rows+cym,roofZ);
+  quad(tA,tB,tC,tD,'rgba(90,140,190,.14)','rgba(150,200,240,.45)',1.5);
+  /* 座舱（较小，半透） */
+  const ccx=Math.min(1.1,cols/2-0.2), ccy=Math.min(1.1,rows/2-0.2);
+  drawBox(cols/2,rows/2,roofZ,ccx,ccy,cabinH,'rgba(120,170,210,.16)','rgba(150,200,240,.5)');
+  /* 标识 */
+  const eb=P(cols/2,rows+cym+0.05,bodyZ0+bodyH*0.5);
+  sctx.fillStyle='rgba(94,242,255,.9)';sctx.font='bold 11px '+MONO;sctx.fillText('EV',eb[0]-8,eb[1]);
+  const lb=P(cols/2,-cym-0.1,bodyZ0+bodyH*0.6);
+  sctx.fillStyle='rgba(150,200,240,.85)';sctx.font='9px '+MONO;sctx.fillText('电动汽车底盘电池包（你的车底）',lb[0]-62,lb[1]);
+}
+function drawEVPerson(){
+  const cols=SC.cols,rows=SC.rows,U=SC.U;
+  const cxm=1.5, cym=1.5;
+  const px=-cxm-0.55, py=rows/2;
+  const f=P(px,py,0), hd=P(px,py,1.6*U);
+  sctx.strokeStyle='rgba(190,210,240,.75)';sctx.lineWidth=3;sctx.lineCap='round';
+  sctx.beginPath();sctx.moveTo(f[0],f[1]);sctx.lineTo(hd[0],hd[1]);sctx.stroke();
+  sctx.fillStyle='rgba(205,225,250,.85)';sctx.beginPath();sctx.arc(hd[0],hd[1]-5,5,0,7);sctx.fill();
+  sctx.fillStyle='rgba(180,200,230,.6)';sctx.font='8px '+MONO;sctx.fillText('真人比例≈1.7m',f[0]+7,f[1]-2);
+  sctx.lineCap='butt';
+}
+function drawScene3D(){
+  /* 让画布背板分辨率匹配实际显示尺寸 × devicePixelRatio，避免中央大图在 HiDPI 屏发虚 */
+  const dpr=window.devicePixelRatio||1;
+  const cw=sceneCv.clientWidth||640, ch=sceneCv.clientHeight||430;
+  if(sceneCv.width!==Math.round(cw*dpr)||sceneCv.height!==Math.round(ch*dpr)){sceneCv.width=Math.round(cw*dpr);sceneCv.height=Math.round(ch*dpr);}
+  sctx.setTransform(dpr,0,0,dpr,0,0);
+  const W=cw,H=ch;
+  sctx.clearRect(0,0,W,H);
+  const bg=sctx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0a1322');bg.addColorStop(1,'#05080f');sctx.fillStyle=bg;sctx.fillRect(0,0,W,H);
+  const rows=S.p.rows,cols=S.p.cols,N=rows*cols;
+  const temps=currentTemps();
+  const ev=S.evMode;
+  const RW=1.7,RD=1.7,pad=ev?44:28;
+  const vSpanU=3.4+(cols+rows+2*RW+2*RD)*0.30;
+  const hSpanU=(cols+rows+2*RW+2*RD)*0.50;
+  const U=Math.max(26,Math.floor(Math.min((W-2*pad)/hSpanU,(H-2*pad)/vSpanU)));
+  const OX=W/2-(cols-rows)*0.25*U;
+  const WH=3.4*U;
+  const OY=H/2+(WH-(cols+rows)*0.30*U)/2;
+  SC.U=U;SC.OX=OX;SC.OY=OY;SC.RW=RW;SC.RD=RD;SC.WH=WH;SC.W=W;SC.H=H;SC.rows=rows;SC.cols=cols;
+  const sgx=OX,sgy=OY-WH*0.35,sgr=Math.max(W,H)*0.42;
+  const rg=sctx.createRadialGradient(sgx,sgy,8,sgx,sgy,sgr);
+  rg.addColorStop(0,'rgba(34,211,238,.13)');rg.addColorStop(.6,'rgba(34,211,238,.04)');rg.addColorStop(1,'rgba(34,211,238,0)');
+  sctx.fillStyle=rg;sctx.fillRect(0,0,W,H);
+  if(S.evMode)drawEVGround();
+  else if(S.labScene)drawLabRoom();else drawSimpleGrid();
+  if(!S.evMode && S.labScene)drawChamberBack();
+  if(!S.evMode && S.labScene)drawGroundHalo();
+  drawPackBase();
+  if(S.viewMode==='bar')drawThermalTray();
+  const cells=[];for(let ri=0;ri<rows;ri++)for(let ci=0;ci<cols;ci++)cells.push({ri,ci,i:ri*cols+ci,depth:ri+ci});
+  cells.sort((a,b)=>a.depth-b.depth);
+  for(const c of cells){const T=temps?temps[c.i]:S.p.ambient;drawCell3D(c.ci,c.ri,T,c.i);}
+  if(S.p.triggerMode==='nail' && temps) drawNail(temps[S.p.triggerCell]);
+  drawPackFrame();
+  if(S.evMode){drawEVBody();drawEVPerson();}
+  else if(S.labScene)drawChamberFront();
+  drawGas();
+  if(!S.evMode && S.labScene)drawLabProps();
+  drawSceneLabels();
+  drawTempScale();
+  refreshEquip();
+}
+function refreshEquip(){
+  const st=document.getElementById('stChamber');st.className='st ok';st.textContent='防护试验舱: 就绪';
+  const il=document.getElementById('stInterlock');
+  if(S.interlockFailed){il.className='st bad';il.textContent='舱门联锁: 失效';}
+  else if(S.interlock==='ok'){il.className='st ok';il.textContent='舱门联锁: 已锁闭';}
+  else{il.className='st warn';il.textContent='舱门联锁: 待检';}
+  const gi=document.getElementById('stGas');
+  const sim=S.playing?S.sim:(S.sim||S.preview);
+  if(sim&&sim.rec.gas){let f=S.frame;if(f>=sim.rec.gas.length)f=sim.rec.gas.length-1;if(f>=0&&sim.rec.gas[f]>0.8){gi.className='st bad';gi.textContent='舱内气体: 高风险';}else{gi.className='st ok';gi.textContent='舱内气体: 正常';}}
+  else{gi.className='st ok';gi.textContent='舱内气体: 正常';}
+  const kv=document.getElementById('equipKV');
+  kv.innerHTML=`<b>设备</b>：电芯模组(${S.p.rows}×${S.p.cols})、舱门磁联锁、温/压/气体传感器、热成像、远程急停。`
+    +`<br>当前：电芯=${CELL[S.p.cellType].name}，冷却=${S.p.cooling}，隔热=${S.p.insulation}，触发=${triggerName(S.p.triggerMode)}。`;
+}
+
+/* =========================================================================
+   沙盘模式：参数 / 运行 / 故障 / AI
+   ========================================================================= */
+function readParams(){
+  const [rows,cols]=document.getElementById('layout').value.split(',').map(Number);
+  const p=Object.assign({},S.p,{
+    cellType:document.getElementById('cellType').value, rows, cols,
+    SOC:+document.getElementById('soc').value, ambient:+document.getElementById('ambient').value,
+    cooling:document.getElementById('cooling').value, coolingPower:+document.getElementById('cpow').value,
+    insulation:+document.getElementById('ins').value, exhaust:+document.getElementById('exh').value,
+    triggerCell:+document.getElementById('triggerCell').value,
+    triggerMode:document.getElementById('triggerMode').value,
+    triggerPower:+document.getElementById('tpow').value,
+    faultA:S.faultA, anomalyPower:80
+  });
+  S.p=p; return p;
+}
+function rebuildTriggerOptions(){
+  const [rows,cols]=document.getElementById('layout').value.split(',').map(Number);
+  const N=rows*cols, sel=document.getElementById('triggerCell'); const cur=sel.value;
+  sel.innerHTML='';
+  for(let i=0;i<N;i++){const o=document.createElement('option');o.value=i;o.textContent='电芯 #'+i+'（第'+(Math.floor(i/cols)+1)+'行'+(i%cols+1)+'列）';sel.appendChild(o);}
+  if(cur && +cur<N) sel.value=cur; else sel.value=0;
+}
+function syncRangeLabels(){
+  const g=id=>document.getElementById(id).value;
+  document.getElementById('socV').textContent=g('soc');
+  document.getElementById('ambV').textContent=g('ambient');
+  document.getElementById('cpowV').textContent=g('cpow');
+  document.getElementById('insV').textContent=g('ins');
+  document.getElementById('exhV').textContent=g('exh');
+  document.getElementById('tpowV').textContent=g('tpow');
+}
+function runSandbox(){
+  if(S.interlockFailed){showOverlay('联锁失效 · 试验被强制禁止','检测到舱体报警/联锁失效。<b>独立硬安全规则已触发：禁止绕过联锁继续试验。</b><br>AI 安全员无权解除联锁。请复位联锁后再运行。');return;}
+  const p=readParams();
+  S.sim=simulate(p); S.peakFrame=peakFrame(S.sim); S.frame=0; S.playing=true;
+  document.getElementById('btnPlay').textContent='⏸ 暂停';
+  drawScene3D(); drawCharts(); updateAISandbox(); startPlay();
+}
+function updateAISandbox(){
+  const m=S.sim?S.sim.metrics:null; const p=S.p; const box=document.getElementById('aiBoxSandbox');
+  if(S.interlockFailed){box.className='ai err';box.innerHTML='<b>硬安全拦截</b>：联锁失效，试验被强制禁止。AI 无权解除联锁。';return;}
+  if(!m){box.className='ai ok';box.innerHTML='配置就绪，运行后查看三维演化……';return;}
+  let cls='ok',msg='';
+  if(m.Tmax>=600){cls='err';msg='<b>高危判定</b>：峰值 '+m.Tmax+'℃ 已达剧烈放热。建议降低 SOC、提升冷却/隔热或预置应急隔离。';}
+  else if(m.dtprop!=null && m.dtprop<25){cls='warn';msg='<b>风险提醒</b>：热传播延迟仅 '+m.dtprop+'s，蔓延迅速。当前'+coolingName(p.cooling)+'强度 '+p.coolingPower+' 偏不足，建议增强。';}
+  else if(m.dtprop==null && m.Tmax<150){cls='ok';msg='<b>安全评估通过</b>：'+cellName(p.cellType)+' 在 '+coolingName(p.cooling)+'(强度'+p.coolingPower+')+隔热'+p.insulation+' 下被有效抑制，未传播。方案合理。';}
+  else if(m.dtprop!=null){cls='warn';msg='<b>中等风险</b>：已发生热蔓延（Δtprop='+m.dtprop+'s）。可尝试提高冷却强度或隔热以阻断传播。';}
+  else{cls='ok';msg='<b>评估</b>：当前配置未出现明显失控，可尝试提高触发强度或降低冷却观察传播。';}
+  box.className='ai '+cls;box.innerHTML=msg;
+}
+function cellName(t){return CELL[t]?CELL[t].name:t;}
+function coolingName(c){return c==='natural'?'自然冷却':(c==='air'?'风冷':'液冷');}
+function triggerName(m){return ({external:'外部加热(针刺/加热板)',overcharge:'过充',internal:'内短路',nail:'针刺穿透'})[m]||m;}
+function applyPreset(name){
+  const set=(id,v)=>{document.getElementById(id).value=v;};
+  if(name==='base'){set('cellType','NMC');set('layout','2,4');set('soc','1.0');set('ambient','25');set('cooling','air');set('cpow','3');set('ins','0.2');set('exh','0.5');set('triggerMode','external');set('tpow','400');}
+  if(name==='cool'){set('cellType','NMC');set('layout','2,4');set('soc','1.0');set('ambient','25');set('cooling','liquid');set('cpow','5');set('ins','0.6');set('exh','0.8');set('triggerMode','external');set('tpow','400');}
+  if(name==='lfp'){set('cellType','LFP');set('layout','2,4');set('soc','1.0');set('ambient','25');set('cooling','air');set('cpow','3');set('ins','0.2');set('exh','0.5');set('triggerMode','external');set('tpow','500');}
+  if(name==='nca'){set('cellType','NCA');set('layout','2,4');set('soc','1.0');set('ambient','30');set('cooling','air');set('cpow','2');set('ins','0.1');set('exh','0.4');set('triggerMode','external');set('tpow','450');}
+  if(name==='none'){set('cellType','NMC');set('layout','2,4');set('soc','1.0');set('ambient','30');set('cooling','natural');set('cpow','1');set('ins','0.0');set('exh','0.3');set('triggerMode','external');set('tpow','400');}
+  if(name==='nail'){set('cellType','NMC');set('layout','2,4');set('soc','1.0');set('ambient','25');set('cooling','air');set('cpow','3');set('ins','0.15');set('exh','0.5');set('triggerMode','nail');set('tpow','700');}
+  rebuildTriggerOptions();syncRangeLabels();
+  S.faultA=false;S.faultB=false;document.getElementById('faultA').className='btn-ghost';document.getElementById('faultB').className='btn-ghost';
+  document.getElementById('faultState').innerHTML='当前状态：正常（无故障注入）';
+  runSandbox();
+}
+function setFaultA(){S.faultA=!S.faultA;document.getElementById('faultA').className=S.faultA?'btn-warn':'btn-ghost';
+  document.getElementById('faultState').innerHTML=S.faultA?'当前状态：<span style="color:#a86a00">A 初级</span> 局部温度异常（邻近电芯弱热源）':'当前状态：正常（无故障注入）';
+  if(S.sim)runSandbox();}
+function setFaultB(){S.faultB=!S.faultB;document.getElementById('faultB').className=S.faultB?'btn-warn':'btn-ghost';
+  if(S.faultB){document.getElementById('cooling').value='air';document.getElementById('cpow').value=2;document.getElementById('tpow').value=600;syncRangeLabels();
+    document.getElementById('faultState').innerHTML='当前状态：<span style="color:#b23a2c">B 中级</span> 单体热失控 → 热蔓延（已加载高风险配置）';}
+  else{document.getElementById('faultState').innerHTML='当前状态：正常（无故障注入）';}
+  if(S.sim)runSandbox();}
+function setFaultC(){S.interlockFailed=true;document.getElementById('faultC').className='btn-err';
+  document.getElementById('faultState').innerHTML='当前状态：<span style="color:#c5281c">C 高级</span> 舱体报警/联锁失效 → <b>硬规则强制禁止试验</b>';
+  stopPlay();showOverlay('⛔ 联锁失效 · 试验被强制禁止','检测到舱体报警 / 联锁失效。<br><b>独立硬安全规则已触发：禁止绕过联锁继续试验。</b><br>本系统 AI 安全员<b>无权解除联锁</b>。请复位联锁后再运行。');updateAISandbox();refreshEquip();}
+function resetInterlock(){S.interlockFailed=false;document.getElementById('faultC').className='btn-ghost';
+  document.getElementById('faultState').innerHTML='当前状态：正常（无故障注入）';hideOverlay();updateAISandbox();refreshEquip();}
+function showOverlay(title,text){let ov=document.getElementById('overlay');if(!ov){ov=document.createElement('div');ov.id='overlay';ov.className='overlay';ov.innerHTML='<h2 id="ovTitle"></h2><p id="ovText"></p><button class="btn" id="ovClose" style="margin-top:10px">关闭</button>';document.body.appendChild(ov);document.getElementById('ovClose').onclick=hideOverlay;}ov.querySelector('#ovTitle').textContent=title;ov.querySelector('#ovText').innerHTML=text;ov.classList.add('show');}
+function hideOverlay(){const ov=document.getElementById('overlay');if(ov)ov.classList.remove('show');}
+function startPlay(){stopPlay();if(!S.sim)return;document.getElementById('btnPlay').textContent='⏸ 暂停';S._timer=setInterval(()=>{if(S.frame>=S.sim.rec.T.length-1){S.frame=0;}S.frame++;drawScene3D();drawCharts();},70);}
+function stopPlay(){if(S._timer){clearInterval(S._timer);S._timer=null;}}
+function togglePlay(){if(S.interlockFailed){runSandbox();return;}if(S._timer){stopPlay();document.getElementById('btnPlay').textContent='▶ 播放';}else{if(!S.sim){if(S.preview){S.sim=S.preview;S.playing=true;S.frame=0;}else{return;}}document.getElementById('btnPlay').textContent='⏸ 暂停';startPlay();}}
+function exportPNG(id,name){const c=document.getElementById(id);const a=document.createElement('a');a.download=name;a.href=c.toDataURL('image/png');a.click();}
+
+/* =========================================================================
+   24 步定义（对齐教学方案 3.3）
+   ========================================================================= */
+const STEPS=[
+ {id:1,phase:1,title:'选择电芯类型与模组构型',instr:'在虚拟物料库中选择电芯化学体系与模组排布。系统将加载对应的材料与电热参数（热稳定性、触发温度、反应焓）。',
+  op:()=>`<div class="grid2">
+    <div><label class="fld">电芯类型</label><select id="op_cell">${Object.entries(CELL).map(([k,v])=>`<option value="${k}" ${S.p.cellType===k?'selected':''}>${v.name}</option>`).join('')}</select></div>
+    <div><label class="fld">模组排列（行×列）</label><select id="op_layout">${[[1,3],[2,3],[2,4],[3,4],[4,6]].map(([r,c])=>`<option value="${r},${c}" ${(S.p.rows===r&&S.p.cols===c)?'selected':''}>${r}×${c}（${r*c} 芯）</option>`).join('')}</select></div>
+   </div><div class="kv" id="cellNote"></div>`,
+  after:()=>{const k=document.getElementById('op_cell').value;document.getElementById('cellNote').innerHTML=`<b>${CELL[k].name}</b> — ${CELL[k].note}；触发温度≈${CELL[k].onset}℃，额定 ${CELL[k].Vnom}V。`;},
+  check:()=>{const k=document.getElementById('op_cell').value;const [r,c]=document.getElementById('op_layout').value.split(',').map(Number);
+    S.p.cellType=k;S.p.rows=r;S.p.cols=c;S.p.triggerCell=0;recomputePreview();
+    return {ok:true,type:'ok',msg:`已加载 ${CELL[k].name}，${r}×${c} 模组（${r*c} 只电芯）。材料与电热参数已载入物理引擎。`};}},
+
+ {id:2,phase:1,title:'确定研究问题与热安全指标',instr:'明确本实验研究问题，并勾选需测量的热安全指标。系统判断指标是否可测量。',
+  op:()=>`<div class="grid3"><div><label class="fld">研究焦点</label><select id="op_focus"><option value="prop">热传播抑制</option><option value="mech">温升机理</option><option value="eff">冷却能效</option></select></div><div></div><div></div></div>
+    <div style="margin-top:6px"><label class="fld">热安全指标（全部勾选）</label>
+    <div class="chk"><input type="checkbox" class="m" checked> 最大温度 T<sub>max</sub></div>
+    <div class="chk"><input type="checkbox" class="m" checked> 最大温差 ΔT<sub>max</sub></div>
+    <div class="chk"><input type="checkbox" class="m" checked> 最大温升速率 dT/dt</div>
+    <div class="chk"><input type="checkbox" class="m" checked> 热传播延迟 Δt<sub>prop</sub></div>
+    <div class="chk"><input type="checkbox" class="m" checked> 冷却能耗 E<sub>cool</sub></div></div>`,
+  check:()=>{const chk=document.querySelectorAll('#stepOp .m');const all=[...chk].every(c=>c.checked);
+    if(!all) return {ok:false,type:'warn',msg:'请将 5 项热安全指标全部勾选：Tmax / ΔTmax / dT/dt / Δtprop / Ecool，它们均可由本物理引擎直接输出。'};
+    S.p.focus=document.getElementById('op_focus').value;return {ok:true,type:'ok',msg:'研究焦点='+({prop:'热传播抑制',mech:'温升机理',eff:'冷却能效'}[S.p.focus])+'；5 项指标均可测量，已纳入计算。'};}},
+
+ {id:3,phase:1,title:'设计不同 SOC 与冷却条件组合',instr:'设计试验矩阵：选择 SOC 水平与冷却工况的组合，使覆盖性满足 DOE 要求（≥3 组组合）。',
+  op:()=>`<div class="grid3"><div><label class="fld">SOC 水平(%)</label><select id="op_soc"><option value="1.0" ${S.p.SOC===1?'selected':''}>100</option><option value="0.8">80</option><option value="0.5">50</option></select></div>
+   <div><label class="fld">冷却方式</label><select id="op_cool">${[['air','风冷'],['liquid','液冷'],['natural','自然冷却']].map(([v,n])=>`<option value="${v}" ${S.p.cooling===v?'selected':''}>${n}</option>`).join('')}</select></div>
+   <div><label class="fld">冷却强度</label><input type="number" id="op_cpow" min="1" max="6" step="0.5" value="${S.p.coolingPower}"></div></div>
+   <div class="kv" id="matrixNote">当前已规划组合：见左侧实时预览。</div>`,
+  check:()=>{S.p.SOC=+document.getElementById('op_soc').value;S.p.cooling=document.getElementById('op_cool').value;S.p.coolingPower=+document.getElementById('op_cpow').value;
+    S.matrix=(S.matrix||0)+1;recomputePreview();
+    if(S.matrix<3) return {ok:false,type:'warn',msg:`当前仅规划 ${S.matrix} 组组合。建议覆盖高/中/低 SOC 与不同冷却方式（≥3 组）以保证矩阵覆盖性。`};
+    return {ok:true,type:'ok',msg:`试验矩阵已覆盖 ${S.matrix} 组工况，SOC=${S.p.SOC*100}%、冷却=${S.p.cooling}。覆盖性满足。`};}},
+
+ {id:4,phase:1,title:'选择虚拟热失控触发工况',instr:'选择触发电芯与触发方式，并设置触发功率/能量。系统提示风险机理与试验限制。',
+  op:()=>`<div class="grid2"><div><label class="fld">触发方式</label><select id="op_tmode">${[['external','外部加热'],['overcharge','过充'],['internal','内短路'],['nail','针刺穿透']].map(([v,n])=>`<option value="${v}" ${S.p.triggerMode===v?'selected':''}>${n}</option>`).join('')}</select></div>
+   <div><label class="fld">触发电芯编号</label><select id="op_tcell">${Array.from({length:S.p.rows*S.p.cols},(_,i)=>`<option value="${i}" ${S.p.triggerCell===i?'selected':''}>#${i+1}</option>`).join('')}</select></div></div>
+   <div style="margin-top:6px"><label class="fld">触发功率/能量 (W)</label><input type="number" id="op_tpow" min="50" max="1200" step="10" value="${S.p.triggerPower}"></div>
+   <div class="kv" id="trigNote"></div>`,
+  after:()=>{const m=document.getElementById('op_tmode').value;const note={external:'外部加热：加热板使电芯升温至触发，机理清晰、可控，最常用。',overcharge:'过充：持续大电流充电引发析锂/产热，接近真实滥用。',internal:'内短路：瞬时大产热直接诱发，最剧烈。'}[m];document.getElementById('trigNote').innerHTML=note;},
+  check:()=>{S.p.triggerMode=document.getElementById('op_tmode').value;S.p.triggerCell=+document.getElementById('op_tcell').value;S.p.triggerPower=+document.getElementById('op_tpow').value;recomputePreview();
+    if(S.p.triggerPower>800) return {ok:true,type:'warn',msg:`触发功率 ${S.p.triggerPower}W 偏高：超出常规加热板能力，存在过工况喷射风险，建议≤600W 并在步骤05 双人确认。`};
+    return {ok:true,type:'ok',msg:`触发方式=${S.p.triggerMode}，电芯#${S.p.triggerCell+1}，功率 ${S.p.triggerPower}W。风险机理已提示。`};}},
+
+ {id:5,phase:1,title:'确认试验审批及人员隔离要求',instr:'确认试验审批已获准、试验人员已撤离至应急隔离区。条件不足时系统禁止试验（硬约束）。',
+  op:()=>`<div class="chk"><input type="checkbox" id="op_approve"> 试验审批已获准（导师/安全员签字）</div>
+   <div class="chk"><input type="checkbox" id="op_evac"> 人员已撤离至应急隔离区，远程控制室就位</div>`,
+  check:()=>{const a=document.getElementById('op_approve').checked,e=document.getElementById('op_evac').checked;
+    if(!a||!e){S.scores.safety=Math.max(0,S.scores.safety-1);return {ok:false,type:'err',msg:'审批或人员隔离未满足：依据实验室安全底线，<b>条件不足禁止试验</b>。请完成两项确认后再继续。'};}
+    return {ok:true,type:'ok',msg:'审批与人员隔离均已确认，满足试验准入条件。'};}},
+
+ {id:6,phase:1,title:'检查防护舱结构与防护状态',instr:'检查虚拟防护试验舱的密封、排气与安全边界。系统显示当前防护状态。',
+  op:()=>`<div class="kv">防护试验舱参数（虚拟）：<span class="pill">容积 2.0 m³</span><span class="pill">耐压 0.25 MPa</span><span class="pill">泄压阀 2 路</span><span class="pill">防爆观察窗</span></div>
+   <div class="chk"><input type="checkbox" id="op_seal" checked> 舱体密封与防爆结构完好</div>
+   <div class="chk"><input type="checkbox" id="op_exhaust" checked> 排气/泄压通道畅通</div>
+   <div class="chk"><input type="checkbox" id="op_bound" checked> 安全边界（隔离半径）已标定</div>`,
+  check:()=>{const ok=[['op_seal'],['op_exhaust'],['op_bound']].every(([id])=>document.getElementById(id).checked);
+    if(!ok) return {ok:false,type:'warn',msg:'存在未确认项：防护状态不完整，可能带来喷放/超压风险，请逐项确认。'};
+    return {ok:true,type:'ok',msg:'防护试验舱结构与防护状态检查通过：密封、排气、安全边界均完好。'};}},
+
+ {id:7,phase:1,title:'检查舱门、联锁与远程停机',instr:'运行联锁自检。任一联锁异常时系统<b>强制禁止启动</b>（独立硬安全规则）。',
+  op:()=>`<button class="btn" id="btnInterlock">运行联锁自检</button>
+   <div class="kv" id="ilNote" style="margin-top:6px">点击上方按钮检测：舱门磁联锁、远程急停硬线、气体/压力联锁。</div>`,
+  after:()=>{document.getElementById('btnInterlock').onclick=()=>{
+     S.interlock = (S.branch==='C'||S.interlockFailed)?'failed':'ok';
+     const st=document.getElementById('stInterlock');
+     if(S.interlock==='failed'){st.className='st bad';st.textContent='舱门联锁: 失效';document.getElementById('ilNote').innerHTML='<b style="color:#a32727">联锁自检失败！</b> 依据硬安全规则，试验禁止启动，且<b>AI 无权解除联锁</b>。';}
+     else{st.className='st ok';st.textContent='舱门联锁: 已锁闭';document.getElementById('ilNote').innerHTML='联锁自检通过：舱门磁联锁、远程急停硬线、气体/压力联锁均正常。';}
+     refreshEquip();};},
+  check:()=>{
+    if(S.interlock==='failed'){S.scores.safety=Math.max(0,S.scores.safety-2);return {ok:false,type:'err',msg:'联锁自检失败。<b>硬安全规则：联锁失效时禁止启动试验，且本系统 AI 安全员不能解除联锁。</b>请按规程隔离与撤离，待联锁恢复后再继续。'};}
+    if(S.interlock!=='ok'){return {ok:false,type:'err',msg:'请先点击「运行联锁自检」完成舱门、联锁与远程停机检测；未通过则禁止启动。'};}
+    return {ok:true,type:'ok',msg:'舱门、联锁与远程停机检查正常，满足启动前提。'};}},
+
+ {id:8,phase:1,title:'布设电芯表面温度测点',instr:'布设温度测点。系统检查测点覆盖率（建议每芯或代表性布点）。',
+  op:()=>`<div class="chk"><input type="checkbox" id="op_tpc" ${S.p.sensorsTempPerCell?'checked':''}> 每颗电芯表面布设温度测点（全覆盖）</div>
+   <div class="kv" id="covNote"></div>`,
+  after:()=>{document.getElementById('covNote').innerHTML=`模组共 ${S.p.rows*S.p.cols} 颗电芯；全覆盖可最佳捕捉热传播节点。`;},
+  check:()=>{S.p.sensorsTempPerCell=document.getElementById('op_tpc').checked;
+    if(!S.p.sensorsTempPerCell) return {ok:false,type:'warn',msg:'未全覆盖温度测点：热传播延迟 Δtprop 将难以精确捕捉，建议补充测点。'};
+    return {ok:true,type:'ok',msg:`温度测点已全覆盖（${S.p.rows*S.p.cols} 点），可精确标记相邻电芯温升与传播节点。`};}},
+
+ {id:9,phase:1,title:'布设舱内压力与气体传感器',instr:'布设压力与气体（CO/H₂/VOCS）传感器。系统评价选型与布点合理性。',
+  op:()=>`<div class="grid2"><div><label class="fld">气体传感器数量</label><input type="number" id="op_gs" min="1" max="6" value="${S.p.gasSensors}"></div>
+   <div><label class="fld">压力传感器数量</label><input type="number" id="op_ps" min="1" max="4" value="${S.p.pressureSensors}"></div></div>`,
+  check:()=>{S.p.gasSensors=+document.getElementById('op_gs').value;S.p.pressureSensors=+document.getElementById('op_ps').value;
+    if(S.p.gasSensors<2||S.p.pressureSensors<1) return {ok:false,type:'warn',msg:'传感器布点不足：建议气体≥2（冗余探测）、压力≥1，避免漏报烟气/超压风险。'};
+    return {ok:true,type:'ok',msg:`气体传感器 ${S.p.gasSensors} 个、压力传感器 ${S.p.pressureSensors} 个，选型与布点合理。`};}},
+
+ {id:10,phase:1,title:'配置热成像及数据采集通道',instr:'配置热成像与采集通道（采样率、量程）。系统检查量程与采样设置。',
+  op:()=>`<div class="grid2"><div><label class="fld">采样率 (Hz)</label><select id="op_samp">${[1,2,5,10].map(v=>`<option value="${v}" ${S.p.sampling===v?'selected':''}>${v}</option>`).join('')}</select></div>
+   <div><label class="fld">热成像</label><select id="op_th"><option value="1" ${S.p.thermalImaging?'selected':''}>开启</option><option value="0" ${!S.p.thermalImaging?'selected':''}>关闭</option></select></div></div>
+   <div class="kv">温度量程 0–800℃、电压量程 0–5V、压力量程 0–150kPa，已自动匹配。</div>`,
+  check:()=>{S.p.sampling=+document.getElementById('op_samp').value;S.p.thermalImaging=document.getElementById('op_th').value==='1';
+    if(S.p.sampling<2) return {ok:false,type:'warn',msg:'采样率偏低（<2Hz），可能漏采快速温升尖峰，建议≥2Hz。'};
+    return {ok:true,type:'ok',msg:`采集通道配置完成：采样 ${S.p.sampling}Hz，热成像 ${S.p.thermalImaging?'开启':'关闭'}。`};}},
+
+ {id:11,phase:1,title:'选择冷却结构、隔热层与排气路径',instr:'选择冷却结构、隔热层与排气路径，生成初始热管理配置。该配置将作为后续优化基准。',
+  op:()=>`<div class="grid3"><div><label class="fld">冷却结构</label><select id="op_cool2">${[['air','风冷'],['liquid','液冷'],['natural','自然冷却']].map(([v,n])=>`<option value="${v}" ${S.p.cooling===v?'selected':''}>${n}</option>`).join('')}</select></div>
+   <div><label class="fld">冷却强度</label><input type="number" id="op_cpow2" min="1" max="6" step="0.5" value="${S.p.coolingPower}"></div>
+   <div><label class="fld">隔热系数(0–1)</label><input type="number" id="op_ins" min="0" max="0.95" step="0.05" value="${S.p.insulation}"></div></div>
+   <div class="grid2" style="margin-top:6px"><div><label class="fld">排气路径</label><select id="op_ventpath"><option value="top">顶部导流</option><option value="side">侧向泄压</option><option value="bottom">底部排气</option></select></div>
+   <div><label class="fld">排气流量系数</label><input type="number" id="op_exh" min="0.2" max="1" step="0.1" value="${S.p.exhaust}"></div></div>
+   <div class="kv" id="tmNote"></div>`,
+  after:()=>{document.getElementById('tmNote').innerHTML='初始热管理配置已生成，可在步骤21 修改并进行二次仿真。';},
+  check:()=>{S.p.cooling=document.getElementById('op_cool2').value;S.p.coolingPower=+document.getElementById('op_cpow2').value;S.p.insulation=+document.getElementById('op_ins').value;S.p.exhaust=+document.getElementById('op_exh').value;S.p.ventPath=document.getElementById('op_ventpath').value;recomputePreview();
+    return {ok:true,type:'ok',msg:`初始热管理配置：冷却=${S.p.cooling}(强度${S.p.coolingPower})，隔热=${S.p.insulation}，排气=${S.p.ventPath}(流量${S.p.exhaust})。`};}},
+
+ {id:12,phase:1,title:'设定报警规则与保护动作',instr:'设定温度/压力/气体报警阈值与保护动作（远程停机、隔离、泄压）。系统检查安全逻辑完整性。',
+  op:()=>`<div class="grid3"><div><label class="fld">温度报警 (℃)</label><input type="number" id="op_aT" value="${S.p.alarmT}"></div>
+   <div><label class="fld">压力报警 (kPa)</label><input type="number" id="op_aP" value="${S.p.alarmP}"></div>
+   <div><label class="fld">气体报警</label><input type="number" id="op_aG" step="0.1" value="${S.p.alarmGas}"></div></div>
+   <div class="chk"><input type="checkbox" id="op_act1" checked> 触发远程停机</div>
+   <div class="chk"><input type="checkbox" id="op_act2" checked> 触发舱体隔离</div>
+   <div class="chk"><input type="checkbox" id="op_act3" checked> 触发泄压/排气</div>`,
+  check:()=>{S.p.alarmT=+document.getElementById('op_aT').value;S.p.alarmP=+document.getElementById('op_aP').value;S.p.alarmGas=+document.getElementById('op_aG').value;
+    S.p.actions={shutdown:document.getElementById('op_act1').checked,isolate:document.getElementById('op_act2').checked,vent:document.getElementById('op_act3').checked};
+    if(!(S.p.actions.shutdown&&S.p.actions.isolate&&S.p.actions.vent)) return {ok:false,type:'warn',msg:'安全逻辑不完整：远程停机、隔离、泄压应同时具备，否则异常时无法有效遏制。'};
+    return {ok:true,type:'ok',msg:`报警规则已设定：T≥${S.p.alarmT}℃、P≥${S.p.alarmP}kPa、气体≥${S.p.alarmGas}。保护动作（停机/隔离/泄压）齐备。`};}},
+
+ {id:13,phase:1,title:'完成试验前双人确认',instr:'执行双人确认（操作员A / 操作员B）。<b>授权不足禁止继续</b>（独立硬规则）。',
+  op:()=>`<div style="display:flex;gap:8px">
+    <button class="btn ${S.confirmA?'ok':''}" id="btnA">${S.confirmA?'✓ 操作员A 已确认':'操作员A 确认'}</button>
+    <button class="btn ${S.confirmB?'ok':''}" id="btnB">${S.confirmB?'✓ 操作员B 已确认':'操作员B 确认'}</button></div>
+   <div class="kv" id="dcNote" style="margin-top:6px">注：双人须为不同授权人员；仅一人确认不能启动。</div>`,
+  after:()=>{const a=document.getElementById('btnA'),b=document.getElementById('btnB');
+    a.onclick=()=>{S.confirmA=!S.confirmA;a.className='btn '+(S.confirmA?'ok':'');a.textContent=S.confirmA?'✓ 操作员A 已确认':'操作员A 确认';};
+    b.onclick=()=>{S.confirmB=!S.confirmB;b.className='btn '+(S.confirmB?'ok':'');b.textContent=S.confirmB?'✓ 操作员B 已确认':'操作员B 确认';};},
+  check:()=>{if(!S.confirmA||!S.confirmB){S.scores.safety=Math.max(0,S.scores.safety-1);return {ok:false,type:'err',msg:'双人确认未完成。<b>授权不足禁止继续</b>：必须由操作员A与操作员B分别确认。'};}
+    return {ok:true,type:'ok',msg:'双人确认完成，试验授权有效。'};}},
+
+ {id:14,phase:2,title:'在虚拟舱中启动试验工况',instr:'启动前由 AI 安全员进行方案与操作时序校验；校验通过且硬安全规则满足后，多物理场模型开始计算。',
+  op:()=>`<div class="kv" id="aiPre"></div>
+   <button class="btn primary" id="btnStart" style="margin-top:8px">▶ 启动虚拟试验（远程）</button>
+   <div class="kv" id="startNote"></div>`,
+  after:()=>{runAICheck();document.getElementById('btnStart').onclick=()=>{
+     if(S.interlock!=='ok'){forceIntercept('联锁失效：硬安全规则禁止启动，AI 不能解除联锁。');return;}
+     if(!(S.confirmA&&S.confirmB)){forceIntercept('授权不足：需双人确认后方可远程启动。');return;}
+     S.sim=simulate(S.p);S.peakFrame=peakFrame(S.sim);S.playing=true;S.frame=0;document.getElementById('startNote').innerHTML='多物理场模型已启动，正在演化热失控过程…';
+     document.getElementById('stRemote').className='st warn';document.getElementById('stRemote').textContent='远程停机: 运行中';
+     drawScene3D();drawCharts();};},
+  check:()=>{if(!S.sim) return {ok:false,type:'warn',msg:'请先点击「启动虚拟试验」运行多物理场模型。'};
+    return {ok:true,type:'ok',msg:`试验已启动并完成计算。峰值温度 ${S.sim.metrics.Tmax}℃，热传播延迟 Δtprop=${S.sim.metrics.dtprop==null?'未传播':S.sim.metrics.dtprop+'s'}。`};}},
+
+ {id:15,phase:2,title:'观察电压、电流及温度曲线',instr:'播放演化并观察电压、电流与温度曲线，识别异常变化及其时间关联。',
+  op:()=>`<div class="kv">播放演化后，记录触发电芯电压跌落、温度跃升出现的时刻（相对启动时间）。</div>
+   <div style="margin-top:6px"><label class="fld">你判断异常（电压跌落/温升加速）起始时刻约 (s)</label><input type="number" id="op_anom" min="0" max="600" value="${S.sim?Math.round(S.sim.metrics.t_onset||60):60}"></div>`,
+  check:()=>{if(!S.sim) return {ok:false,type:'warn',msg:'请先在步骤14 启动试验。'};
+    const v=+document.getElementById('op_anom').value;const t0=S.sim.metrics.t_onset||0;
+    const err=Math.abs(v-t0);
+    if(err<=t0*0.3+15) return {ok:true,type:'ok',msg:`异常起始时刻判断 ${v}s，与模型解算 ${t0}s 基本吻合，时间关联正确。`};
+    return {ok:true,type:'warn',msg:`你填写 ${v}s，模型解算异常起始约 ${t0}s，偏差较大——回看曲线中电压跌落与温升加速的拐点。`};}},
+
+ {id:16,phase:2,title:'识别温升速率变化与关键征兆',instr:'判定风险升级阶段，并报告观测到的最大温升速率。',
+  op:()=>`<div><label class="fld">风险阶段判定</label><select id="op_stage"><option value="normal">正常</option><option value="rise">温升</option><option value="warn">预警</option><option value="run">失控</option></select></div>
+   <div style="margin-top:6px"><label class="fld">观测最大温升速率 (℃/min)</label><input type="number" id="op_dtdt" value="${S.sim?S.sim.metrics.dTdtMax:0}"></div>`,
+  check:()=>{if(!S.sim) return {ok:false,type:'warn',msg:'请先启动试验。'};
+    const stage=document.getElementById('op_stage').value;const v=+document.getElementById('op_dtdt').value;
+    const truth=S.sim.metrics.dTdtMax;const err=Math.abs(v-truth);
+    let m=`风险阶段判定=${stage}。`;
+    if(stage==='run'||stage==='warn') m+=' 热失控已现，应及时执行报警/停机。'; else m+=' 风险阶段偏低，注意温升加速征兆。';
+    if(err<=truth*0.4+50) return {ok:true,type:'ok',msg:m+` 最大温升速率 ${v}℃/min 与解算 ${truth}℃/min 接近。`};
+    return {ok:true,type:'warn',msg:m+` 你填写 ${v}℃/min，解算峰值约 ${truth}℃/min。`};}},
+
+ {id:17,phase:2,title:'观察气体、压力与喷放行为',instr:'观察气体浓度、舱压与喷放（venting）行为，识别气体风险与警戒需求。',
+  op:()=>`<div><label class="fld">气体/喷放风险等级</label><select id="op_gasrisk"><option value="low">低（无喷放）</option><option value="mid">中（少量喷放）</option><option value="high">高（剧烈喷放/燃爆风险）</option></select></div>
+   <div class="kv" id="gasNote" style="margin-top:6px"></div>`,
+  after:()=>{if(S.sim){const g=S.sim.metrics.gasMax;const r=g>1.2?'high':g>0.4?'mid':'low';document.getElementById('gasNote').innerHTML=`模型解算气体峰值=${g}，风险等级建议：<b>${r==='high'?'高':r==='mid'?'中':'低'}</b>。需警戒易燃气体与烟气。`;}},
+  check:()=>{if(!S.sim) return {ok:false,type:'warn',msg:'请先启动试验。'};
+    const r=document.getElementById('op_gasrisk').value;const g=S.sim.metrics.gasMax;const truth=g>1.2?'high':g>0.4?'mid':'low';
+    if(r===truth) return {ok:true,type:'ok',msg:`气体风险等级判定与模型一致（${truth}）。已识别喷放与烟气警戒需求。`};
+    return {ok:true,type:'warn',msg:`风险等级判定为 ${r}，模型建议 ${truth}；注意喷放与可燃气体积聚。`};}},
+
+ {id:18,phase:2,title:'标记相邻电芯温升与传播节点',instr:'标记相邻电芯温升与传播节点，计算最大温差与热传播延迟 Δtprop。',
+  op:()=>`<div class="grid3"><div><label class="fld">热传播延迟 Δtprop (s)</label><input type="number" id="op_dt" step="0.1" value="${S.sim&&S.sim.metrics.dtprop!=null?S.sim.metrics.dtprop:0}"></div>
+   <div><label class="fld">最大温差 ΔTmax (℃)</label><input type="number" id="op_dtmax" value="${S.sim?S.sim.metrics.dTuniformMax:0}"></div>
+   <div><label class="fld">是否发生传播</label><select id="op_prop"><option value="1" ${S.sim&&S.sim.metrics.propagated?'selected':''}>是</option><option value="0" ${S.sim&&!S.sim.metrics.propagated?'selected':''}>否</option></select></div></div>`,
+  check:()=>{if(!S.sim) return {ok:false,type:'warn',msg:'请先启动试验。'};
+    const dt=+document.getElementById('op_dt').value;const dtm=+document.getElementById('op_dtmax').value;const prop=document.getElementById('op_prop').value==='1';
+    const M=S.sim.metrics;let ok=true,msgs=[];
+    if(prop!==M.propagated){ok=false;msgs.push('传播判定与模型不符');}
+    if(M.dtprop!=null && Math.abs(dt-M.dtprop)>Math.max(10,M.dtprop*0.25)){ok=false;msgs.push('Δtprop 偏差偏大');}
+    if(Math.abs(dtm-M.dTuniformMax)>Math.max(20,M.dTuniformMax*0.2)){ok=false;msgs.push('ΔTmax 偏差偏大');}
+    if(ok) return {ok:true,type:'ok',msg:`Δtprop=${M.dtprop==null?'未传播':M.dtprop+'s'}，ΔTmax=${M.dTuniformMax}℃，计算与模型一致。`};
+    return {ok:true,type:'warn',msg:`与模型解算存在偏差：${msgs.join('、')}。模型 Δtprop=${M.dtprop==null?'未传播':M.dtprop+'s'}，ΔTmax=${M.dTuniformMax}℃。可回看曲线核对传播节点。`};}},
+
+ {id:19,phase:2,title:'超温/超压/报警失效响应 + 故障分支演练',instr:'针对异常工况选择响应措施，并演练三级故障分支：A 初级（局部温度异常）/ B 中级（单体热失控热蔓延）/ C 高级（舱体报警或联锁失效）。',
+  op:()=>`<div class="branchbox" style="border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--soft);margin-top:6px"><b>故障分支演练</b>
+    <div style="margin-top:6px"><label class="fld">选择分支</label><select id="op_branch"><option value="">-- 选择 --</option><option value="A">A 初级：局部温度异常</option><option value="B">B 中级：单体热失控及邻近受热</option><option value="C">C 高级：报警/联锁失效</option></select></div>
+    <div style="margin-top:6px"><label class="fld">你的响应</label><select id="op_resp"><option value="pause">暂停运行、增加监测</option><option value="eval">识别传播征兆、评价隔热/导流/冷却</option><option value="stop">停止试验、隔离与撤离（不绕过联锁）</option><option value="bypass">强制绕过联锁继续试验</option></select></div>
+    <div class="kv" id="branchNote" style="margin-top:6px"></div>
+   </div>`,
+  after:()=>{const b=document.getElementById('op_branch'),r=document.getElementById('op_resp'),n=document.getElementById('branchNote');
+    const note={A:'初级：局部温升未失控，应暂停并加强监测/调整热管理。',B:'中级：单体已失控并向邻近受热，应识别传播征兆、评价防护效果。',C:'高级：报警/联锁失效，必须停止试验并隔离撤离，<b>不得绕过联锁</b>。'};
+    b.onchange=()=>{n.innerHTML=note[b.value]||'';if(b.value==='C'){S.branch='C';S.interlock='failed';const st=document.getElementById('stInterlock');st.className='st bad';st.textContent='舱门联锁: 失效';refreshEquip();}};},
+  check:()=>{const b=document.getElementById('op_branch').value;const r=document.getElementById('op_resp').value;
+    if(!b) return {ok:false,type:'warn',msg:'请选择一个故障分支并完成响应决策。'};
+    if(b==='C'){ if(r==='bypass'){ S.bypassAttempt=true; S.scores.safety=Math.max(0,S.scores.safety-5); forceIntercept('检测到试图绕过失效联锁继续试验——C 级故障的硬安全规则：系统强制禁止绕过联锁。已记录违规。'); return {ok:false,type:'err',msg:'C 级故障：联锁失效，<b>强制禁止绕过联锁继续试验</b>。已触发硬安全拦截并记录违规。'}; }
+      if(r==='stop'){ S.branch='C'; return {ok:true,type:'ok',msg:'C 级响应正确：停止试验、隔离与撤离，未绕过联锁。符合硬安全规则。'}; }
+      return {ok:false,type:'warn',msg:'C 级故障下应选择「停止试验、隔离与撤离」，不得绕过联锁。'}; }
+    if(b==='A'){ if(r==='pause') return {ok:true,type:'ok',msg:'A 级响应正确：暂停运行、增加监测并调整热管理方案。'}; return {ok:false,type:'warn',msg:'A 级（局部温度异常）建议暂停并加强监测。'}; }
+    if(b==='B'){ if(r==='eval') return {ok:true,type:'ok',msg:'B 级响应正确：识别传播征兆，评价隔热/导流/冷却效果。'}; return {ok:false,type:'warn',msg:'B 级（单体热失控热蔓延）应识别传播征兆并评价防护。'}; }
+    return {ok:false,type:'warn',msg:'请完成分支响应。'};}},
+
+ {id:20,phase:3,title:'比较不同工况热失控结果',instr:'比较不同 SOC/冷却/隔热工况下的热失控结果，提取关键影响因素。',
+  op:()=>`<div class="kv">基于已计算的基准工况，提取主要影响因素（可多选）：</div>
+   <div class="chk"><input type="checkbox" class="f"> 电芯化学体系（LFP/NMC/NCA）</div>
+   <div class="chk"><input type="checkbox" class="f"> SOC 与初始能量</div>
+   <div class="chk"><input type="checkbox" class="f"> 冷却方式/强度</div>
+   <div class="chk"><input type="checkbox" class="f"> 隔热与电芯间距</div>
+   <div class="chk"><input type="checkbox" class="f"> 触发方式与功率</div>`,
+  check:()=>{const f=document.querySelectorAll('#stepOp .f');const sel=[...f].filter(c=>c.checked).length;
+    if(sel<3) return {ok:false,type:'warn',msg:`仅选择 ${sel} 项；建议至少识别 3 个关键影响因素（体系/SOC/冷却/隔热/触发）。`};
+    return {ok:true,type:'ok',msg:`已提取 ${sel} 个关键影响因素，可用于指导热管理方案优化。`};}},
+
+ {id:21,phase:3,title:'修改冷却结构与隔热方案',instr:'修改冷却结构/强度与隔热层，更新热边界条件，为二次仿真做准备。',
+  op:()=>`<div class="grid3"><div><label class="fld">冷却方式</label><select id="op_cool3">${[['air','风冷'],['liquid','液冷'],['natural','自然冷却']].map(([v,n])=>`<option value="${v}" ${S.p.cooling===v?'selected':''}>${n}</option>`).join('')}</select></div>
+   <div><label class="fld">冷却强度</label><input type="number" id="op_cpow3" min="1" max="6" step="0.5" value="${S.p.coolingPower}"></div>
+   <div><label class="fld">隔热系数</label><input type="number" id="op_ins3" min="0" max="0.95" step="0.05" value="${S.p.insulation}"></div></div>
+   <div class="grid2" style="margin-top:6px"><div><label class="fld">排气流量</label><input type="number" id="op_exh3" min="0.2" max="1" step="0.1" value="${S.p.exhaust}"></div><div></div></div>
+   <div class="kv" id="optNote"></div>`,
+  after:()=>{document.getElementById('optNote').innerHTML='提示：增强液冷/提高隔热/加大排气通常可降低 Tmax、延长 Δtprop 或阻断传播。';},
+  check:()=>{const cool=document.getElementById('op_cool3').value,cp=+document.getElementById('op_cpow3').value,ins=+document.getElementById('op_ins3').value,exh=+document.getElementById('op_exh3').value;
+    const changed=(cool!==S.p.cooling)||(cp!==S.p.coolingPower)||(ins!==S.p.insulation)||(exh!==S.p.exhaust);
+    S.opt={cooling:cool,coolingPower:cp,insulation:ins,exhaust:exh};
+    if(!changed) return {ok:false,type:'warn',msg:'未对热管理方案做任何修改；请调整冷却/隔热/排气以形成优化方案。'};
+    return {ok:true,type:'ok',msg:`优化方案已设定：冷却=${cool}(${cp})，隔热=${ins}，排气=${exh}。点击下一步进行二次仿真。`};}},
+
+ {id:22,phase:3,title:'对优化方案进行二次仿真验证',instr:'对优化方案进行二次仿真，生成改进前后对比。系统评估热安全与能效改进。',
+  op:()=>`<button class="btn primary" id="btnReOpt">运行二次仿真（优化方案）</button>
+   <div class="kv" id="cmpNote" style="margin-top:8px"></div>`,
+  after:()=>{document.getElementById('btnReOpt').onclick=()=>{
+     if(!S.opt){alert('请先在步骤21 设定优化方案');return;}
+     const p2=Object.assign({},S.p,S.opt);S.simOpt=simulate(p2);
+     const a=S.sim?S.sim.metrics:null,b=S.simOpt.metrics;
+     let txt=`<b>改进前（基准）</b>：Tmax=${a?a.Tmax:'—'}℃, Δtprop=${a&&a.dtprop!=null?a.dtprop+'s':'未传播'}, E_cool=${a?a.E_cool:'—'}kJ<br>`;
+     txt+=`<b>改进后（优化）</b>：Tmax=${b.Tmax}℃, Δtprop=${b.dtprop!=null?b.dtprop+'s':'未传播'}, E_cool=${b.E_cool}kJ<br>`;
+     if(a){const dT=a.Tmax-b.Tmax;const propImpr=(a.dtprop==null&&b.dtprop!=null)?'传播被阻断':(a.dtprop!=null&&b.dtprop!=null)?`延迟 ${((b.dtprop-a.dtprop)).toFixed(1)}s`:'';
+       txt+=`<b style="color:#136b3c">改进效果</b>：峰值温度 ${dT>=0?'降低':'升高'} ${Math.abs(dT)}℃；${propImpr||'传播状态未变'}；冷却能耗 ${b.E_cool>=a.E_cool?'增加':'降低'} ${(b.E_cool-a.E_cool).toFixed(1)}kJ。`;}
+     document.getElementById('cmpNote').innerHTML=txt;drawCharts();};},
+  check:()=>{if(!S.simOpt) return {ok:false,type:'warn',msg:'请先点击「运行二次仿真」生成改进前后对比。'};
+    const a=S.sim.metrics,b=S.simOpt.metrics;const improved=(b.Tmax<a.Tmax)||(a.dtprop!=null&&b.dtprop==null)||(a.dtprop!=null&&b.dtprop!=null&&b.dtprop>a.dtprop);
+    if(improved) return {ok:true,type:'ok',msg:`二次仿真完成：峰值温度由 ${a.Tmax}℃ 降至 ${b.Tmax}℃，${a.dtprop!=null&&b.dtprop==null?'且传播被阻断':''}。优化有效。`};
+    return {ok:true,type:'warn',msg:`二次仿真完成，但热安全指标未明显改善（Tmax ${a.Tmax}→${b.Tmax}℃）。可返回步骤21 进一步增强冷却/隔热。`};}},
+
+ {id:23,phase:4,title:'开展失效模式与影响分析（FMEA）',instr:'填写/完善 FMEA 表，评价风险控制有效性。RPN = S×O×D。',
+  op:()=>`<div class="kv">在右侧「FMEA」标签页编辑失效模式、S/O/D 与措施；本步骤检查完整性与高风险项措施。</div>
+   <button class="btn" id="btnGoFmea" onclick="document.querySelector('[data-tab=fmea]').click()">前往 FMEA 表</button>`,
+  check:()=>{const rows=S.fmea;const n=rows.length;const high=rows.filter(r=>r.RPN>=16).length;
+    if(n<5) return {ok:false,type:'warn',msg:`FMEA 仅 ${n} 行，建议≥5 项失效模式以覆盖主要风险。`};
+    if(high>0 && rows.some(r=>r.RPN>=16 && !r.action.trim())) return {ok:false,type:'warn',msg:`存在 ${high} 项高风险(RPN≥16)但缺少建议措施，请补充。`};
+    return {ok:true,type:'ok',msg:`FMEA 含 ${n} 项失效模式，其中 ${high} 项高风险均已给出控制措施，风险控制有效性良好。`};}},
+
+ {id:24,phase:4,title:'提交热管理设计与测试报告',instr:'生成并提交《动力电池热失控特性测试与热安全防护设计报告》。教师与 AI 联合评价。',
+  op:()=>`<div class="kv">点击「生成测试报告」预览，确认后点击「提交」完成实验。</div>
+   <div style="display:flex;gap:8px;margin-top:8px"><button class="btn primary" id="btnSubmit">✓ 提交报告并完成实验</button></div>
+   <div class="kv" id="submitNote" style="margin-top:6px"></div>`,
+  after:()=>{document.getElementById('btnSubmit').onclick=()=>{
+     const total=computeScore();
+     document.getElementById('submitNote').innerHTML=`<b style="color:#136b3c">实验完成！</b> 综合成绩 <b>${total}</b> / 100。<br>
+     实验设计 ${S.scores.design}/20 · 试验安全 ${S.scores.safety}/25 · 数据分析 ${S.scores.analysis}/25 · 热管理优化 ${S.scores.optimize}/20 · 报告 ${S.scores.report}/10。`;
+     document.getElementById('scoreBadge').textContent='总分 '+total;
+     S.submitted=true;};},
+  check:()=>{if(!S.submitted) return {ok:false,type:'warn',msg:'请先点击「提交报告并完成实验」。'};
+    return {ok:true,type:'ok',msg:`报告已提交。综合成绩 ${computeScore()} / 100。可下载报告存档。`};}}
+];
+
+/* =========================================================================
+   AI 安全员（方案/操作时序校验；不能解除联锁）
+   ========================================================================= */
+function runAICheck(){
+  const box=document.getElementById('aiBox');
+  const checks=[];
+  checks.push(['电芯/模组选型', !!S.p.cellType && S.p.rows*S.p.cols>0]);
+  checks.push(['SOC/冷却矩阵覆盖', (S.matrix||0)>=3]);
+  checks.push(['触发工况设置', !!S.p.triggerMode]);
+  checks.push(['人员审批与隔离', true]);
+  checks.push(['防护舱状态', true]);
+  checks.push(['联锁自检', S.interlock==='ok']);
+  checks.push(['温度测点覆盖', S.p.sensorsTempPerCell]);
+  checks.push(['报警/保护动作齐备', S.p.actions&&S.p.actions.shutdown&&S.p.actions.isolate&&S.p.actions.vent]);
+  checks.push(['双人确认', S.confirmA&&S.confirmB]);
+  const passed=checks.filter(c=>c[1]).length;
+  const allPass=passed===checks.length;
+  let html=`<b>AI 安全员 · 方案与操作时序校验</b><br>`;
+  html+=checks.map(c=>`${c[1]?'✅':'⛔'} ${c[0]}`).join('　');
+  html+=`<br><b>结论：</b>${allPass?'校验通过，可远程启动。':'存在未通过项，需先完成。'} <i>（注：AI 仅做校验，<b>不能解除联锁</b>；安全拦截由独立硬规则执行。）</i>`;
+  box.innerHTML=html;box.className='ai show';
+  S.aiValid=allPass;
+}
+function forceIntercept(reason){
+  const fb=document.getElementById('stepFeedback');
+  fb.className='feedback err show';
+  fb.innerHTML=`🛑 <b>硬安全规则强制拦截</b><br>${reason}<br><span class="mini">（该拦截独立于 AI，任何角色均无法绕过，仅可在按规程隔离/撤离并恢复联锁后重启流程。）</span>`;
+  const st=document.getElementById('stInterlock');st.className='st bad';st.textContent='舱门联锁: 拦截';
+  refreshEquip();
+}
+
+/* =========================================================================
+   渲染与交互（24步）
+   ========================================================================= */
+const PHASES=[{id:1,name:'一·实验设计与准备'},{id:2,name:'二·试验启动与演化观测'},{id:3,name:'三·热管理优化与复算'},{id:4,name:'四·FMEA与报告'}];
+function renderPhases(){const bar=document.getElementById('phaseBar');bar.innerHTML=PHASES.map(p=>`<div class="phase ${STEPS[S.step-1].phase===p.id?'active':''}" data-ph="${p.id}">${p.name}</div>`).join('');
+  bar.querySelectorAll('.phase').forEach(el=>el.onclick=()=>{const ph=+el.dataset.ph;const st=STEPS.find(s=>s.phase===ph);gotoStep(st.id);});}
+function renderChips(){const c=document.getElementById('stepChips');c.innerHTML=STEPS.map(s=>{let cls='stepchip';if(s.id===S.step)cls+=' cur';else if(S.completed.has(s.id))cls+=' done';else if(!S.visited.has(s.id))cls+=' lock';return `<div class="${cls}" data-s="${s.id}">${String(s.id).padStart(2,'0')}</div>`;}).join('');
+  c.querySelectorAll('.stepchip').forEach(el=>el.onclick=()=>{const id=+el.dataset.s;if(S.visited.has(id))gotoStep(id);});}
+function gotoStep(id){S.step=id;S.visited.add(id);renderStep();}
+function renderStep(){
+  const st=STEPS[S.step-1];
+  document.getElementById('stepNo').textContent=String(st.id).padStart(2,'0');
+  document.getElementById('stepTitle').textContent=st.title;
+  document.getElementById('stepInstr').innerHTML=st.instr;
+  document.getElementById('stepOp').innerHTML=st.op?st.op():'';
+  const fb=document.getElementById('stepFeedback');fb.className='feedback';fb.innerHTML='';
+  if(st.after)st.after();
+  document.getElementById('phaseBar').querySelectorAll('.phase').forEach(el=>el.classList.toggle('active',PHASES.find(p=>p.id===st.phase).id===+el.dataset.ph));
+  renderPhases();renderChips();
+  document.getElementById('progBadge').textContent=`第 ${st.id} / 24 步`;
+  document.getElementById('btnPrev').disabled=S.step===1;
+  drawCharts();
+}
+function showFeedback(res){const fb=document.getElementById('stepFeedback');fb.className='feedback show '+(res.type||'ok');fb.innerHTML=res.msg;}
+function awardScore(id,type){
+  const sc=S.scores;
+  const add=(k,v)=>{sc[k]=Math.max(0,Math.min({design:20,safety:25,analysis:25,optimize:20,report:10}[k],sc[k]+v));};
+  switch(id){
+    case 1: add('design',2);break;
+    case 2: if(type==='ok')add('design',2);break;
+    case 3: if(type==='ok')add('design',2);break;
+    case 4: add('design',1);break;
+    case 5: if(type==='ok')add('safety',3);break;
+    case 6: add('design',1);break;
+    case 7: if(type==='ok')add('safety',3);break;
+    case 8: if(type==='ok')add('design',1.5);break;
+    case 9: if(type==='ok')add('design',1.5);break;
+    case 10: if(type==='ok')add('design',1);break;
+    case 11: add('design',1.5);break;
+    case 12: if(type==='ok')add('safety',2);break;
+    case 13: if(type==='ok')add('safety',3);break;
+    case 15: if(type==='ok')add('analysis',2);else add('analysis',1);break;
+    case 16: if(type==='ok')add('analysis',2);else add('analysis',1);break;
+    case 17: if(type==='ok')add('analysis',2);else add('analysis',1);break;
+    case 18: if(type==='ok')add('analysis',3);else add('analysis',1.5);break;
+    case 19: if(type==='ok')add('safety',3);break;
+    case 20: add('analysis',1);break;
+    case 21: add('optimize',5);break;
+    case 22: if(type==='ok')add('optimize',10);else add('optimize',5);break;
+    case 23: if(type==='ok')add('report',4);break;
+    case 24: if(type==='ok')add('report',6);break;
+  }
+  updateScoreBadge();
+}
+function computeScore(){const w={design:20,safety:25,analysis:25,optimize:20,report:10};let t=0;for(const k in w)t+=Math.min(w[k],S.scores[k]);return Math.round(t);}
+function updateScoreBadge(){document.getElementById('scoreBadge').textContent='总分 '+computeScore();}
+function recomputePreview(){try{S.preview=simulate(S.p);S.peakFrame=peakFrame(S.preview);}catch(e){S.preview=null;}}
+
+/* =========================================================================
+   图表
+   ========================================================================= */
+const chartCv=document.getElementById('chartCanvas');const cctx=chartCv.getContext('2d');
+let ctab='temp';
+function drawCharts(){
+  const dpr=window.devicePixelRatio||1;
+  const W=chartCv.clientWidth||640,H=210;chartCv.width=W*dpr;chartCv.height=H*dpr;cctx.setTransform(dpr,0,0,dpr,0,0);
+  cctx.clearRect(0,0,W,H);
+  const sim=S.playing?S.sim:(S.sim||S.preview);if(!sim){cctx.fillStyle='#5b6878';cctx.font='12px sans-serif';cctx.fillText('尚未运行仿真：沙盘点「运行仿真」或引导至步骤14 启动。',12,30);drawMetricBox();return;}
+  const rec=sim.rec;const K=rec.time.length;if(K<2){drawMetricBox();return;}
+  const padL=38,padB=22,padT=10,padR=10;
+  const x0=padL,x1=W-padR,y0=H-padB,y1=padT;
+  const tmax=rec.time[K-1];
+  // 时间轴前段拉伸：幂次<1 使早期时间占据更多横向空间，降低升温段视觉斜率
+  const TIME_WARP=0.5;
+  function X(t){const tn=Math.pow(Math.max(0,t)/tmax,TIME_WARP);return x0+tn*(x1-x0);}
+  let ymax=100,ymin=20;
+  if(ctab==='temp'){ymax=Math.max(100,...rec.T.map(arr=>Math.max(...arr)));ymin=Math.min(20,...rec.T.map(arr=>Math.min(...arr)));}
+  else if(ctab==='gas'){ymax=Math.max(2,...rec.gas,...rec.P.map(p=>p/20));ymin=0;}
+  else {ymax=Math.max(4,...rec.V.map(arr=>Math.max(...arr)));ymin=0;}
+  function Y(v){return y0+(v-ymin)/(ymax-ymin)*(y1-y0);}
+  // 横向网格（Y 轴：温度/数值）+ 纵向网格（时间轴：按真实秒数非线性分布）
+  cctx.strokeStyle='rgba(34,211,238,.12)';cctx.fillStyle='#86a0c0';cctx.font='9px sans-serif';
+  for(let i=0;i<=4;i++){const v=ymin+(ymax-ymin)*i/4;const y=Y(v);cctx.beginPath();cctx.moveTo(x0,y);cctx.lineTo(x1,y);cctx.stroke();cctx.fillText(ctab==='temp'?Math.round(v)+'℃':ctab==='gas'?v.toFixed(1):v.toFixed(1)+'V',4,y+3);}
+  cctx.textAlign='center';
+  for(let i=0;i<=5;i++){const tt=tmax*i/5;const x=X(tt);cctx.strokeStyle='rgba(34,211,238,.07)';cctx.beginPath();cctx.moveTo(x,y1);cctx.lineTo(x,y0);cctx.stroke();cctx.fillText(Math.round(tt)+'',x,y0+12);}
+  cctx.textAlign='left';
+  cctx.fillStyle='#6f86a6';cctx.fillText('时间(s)·前段拉伸',x1-78,y0+16);
+  if(ctab==='temp'){
+    const trig=sim.triggerCell;
+    const maxArr=rec.T.map(a=>Math.max(...a)),minArr=rec.T.map(a=>Math.min(...a)),avgArr=rec.T.map(a=>a.reduce((s,v)=>s+v,0)/a.length);
+    const plot=(arr,col,w,dash)=>{cctx.strokeStyle=col;cctx.lineWidth=w;if(dash)cctx.setLineDash([4,3]);cctx.beginPath();for(let k=0;k<K;k++){const x=X(rec.time[k]),y=Y(arr[k]);k?cctx.lineTo(x,y):cctx.moveTo(x,y);}cctx.stroke();cctx.setLineDash([]);};
+    plot(maxArr,'rgba(255,150,60,.7)',1.4,true);
+    plot(minArr,'rgba(80,160,255,.7)',1.4,true);
+    plot(avgArr,'rgba(80,220,140,.9)',1.6,false);
+    cctx.strokeStyle='rgba(255,80,80,.95)';cctx.lineWidth=2;cctx.beginPath();for(let k=0;k<K;k++){const x=X(rec.time[k]),y=Y(rec.T[k][trig]);k?cctx.lineTo(x,y):cctx.moveTo(x,y);}cctx.stroke();
+    document.getElementById('chartLegend').innerHTML=`<span class="sw" style="background:rgba(255,80,80,.95)"></span>触发电芯&nbsp;<span class="sw" style="background:rgba(80,220,140,.9)"></span>平均&nbsp;<span class="sw" style="background:rgba(255,150,60,.7)"></span>最高&nbsp;<span class="sw" style="background:rgba(80,160,255,.7)"></span>最低`;
+  } else if(ctab==='gas'){
+    cctx.strokeStyle='rgba(180,120,255,.95)';cctx.lineWidth=2;cctx.beginPath();for(let k=0;k<K;k++){const x=X(rec.time[k]),y=Y(rec.gas[k]);k?cctx.lineTo(x,y):cctx.moveTo(x,y);}cctx.stroke();
+    cctx.strokeStyle='rgba(255,200,80,.9)';cctx.lineWidth=1.6;cctx.beginPath();for(let k=0;k<K;k++){const x=X(rec.time[k]),y=Y(rec.P[k]/20);k?cctx.lineTo(x,y):cctx.moveTo(x,y);}cctx.stroke();
+    document.getElementById('chartLegend').innerHTML=`<span class="sw" style="background:rgba(180,120,255,.95)"></span>气体浓度(相对)&nbsp;<span class="sw" style="background:rgba(255,200,80,.9)"></span>舱压(kPa/20)`;
+  } else {
+    cctx.strokeStyle='rgba(80,220,140,.95)';cctx.lineWidth=2;cctx.beginPath();for(let k=0;k<K;k++){const x=X(rec.time[k]),y=Y(rec.V[k][sim.triggerCell]);k?cctx.lineTo(x,y):cctx.moveTo(x,y);}cctx.stroke();
+    document.getElementById('chartLegend').innerHTML=`<span class="sw" style="background:rgba(80,220,140,.95)"></span>触发电芯电压(V)`;
+  }
+  if(S.playing&&S.frame<K){const t=rec.time[S.frame];cctx.strokeStyle='rgba(94,242,255,.7)';cctx.beginPath();cctx.moveTo(X(t),y1);cctx.lineTo(X(t),y0);cctx.stroke();}
+  drawMetricBox();drawEvents();
+}
+function drawMetricBox(){
+  const box=document.getElementById('metricBox');const sim=S.playing?S.sim:(S.sim||S.preview);
+  if(!sim){box.innerHTML='<div class="kv">运行仿真后显示热安全指标。</div>';return;}
+  const m=sim.metrics;
+  box.innerHTML=`
+   <div class="metric"><span>最大温度 T<sub>max</sub></span><span class="v">${m.Tmax} ℃</span></div>
+   <div class="metric"><span>温升 ΔT (T<sub>max</sub>−环境)</span><span class="v">${m.dTrise} ℃</span></div>
+   <div class="metric"><span>最大温差 ΔT<sub>max</sub></span><span class="v">${m.dTuniformMax} ℃</span></div>
+   <div class="metric"><span>最大温升速率 dT/dt</span><span class="v">${m.dTdtMax} ℃/min</span></div>
+   <div class="metric"><span>热传播延迟 Δt<sub>prop</sub></span><span class="v">${m.dtprop==null?'未传播':m.dtprop+' s'}</span></div>
+   <div class="metric"><span>冷却能耗 E<sub>cool</sub></span><span class="v">${m.E_cool} kJ</span></div>
+   <div class="metric"><span>触发→失控时刻</span><span class="v">${m.t_onset==null?'—':m.t_onset+' s'}</span></div>
+   <div class="metric"><span>喷放时刻</span><span class="v">${m.t_vent==null?'未喷放':m.t_vent+' s'}</span></div>
+   <div class="metric"><span>气体峰值(相对)</span><span class="v">${m.gasMax}</span></div>
+   <div class="metric"><span>是否传播</span><span class="v">${m.propagated?'是':'否'}</span></div>`;
+}
+function drawEvents(){
+  const sim=S.playing?S.sim:(S.sim||S.preview);if(!sim)return;
+  const m=sim.metrics;const kv=document.getElementById('eventsKV');
+  kv.innerHTML=`<b>关键事件</b>：触发→失控 @ ${m.t_onset==null?'—':m.t_onset}s ｜ 传播起始 @ ${m.t_prop==null?'—':m.t_prop}s ｜ 喷放 @ ${m.t_vent==null?'—':m.t_vent}s ｜ 峰值 @ ${m.t_peakT}s。`;
+}
+
+/* =========================================================================
+   FMEA
+   ========================================================================= */
+function defaultFmea(){return [
+  {mode:'防护舱联锁机构失效',cause:'继电器粘连/传感器故障',effect:'试验无法紧急制动',S:4,O:2,D:2,action:'双冗余硬联锁+独立供电',get RPN(){return this.S*this.O*this.D;}},
+  {mode:'舱门未关或误开',cause:'人员误操作',effect:'高温气体喷出伤人',S:5,O:2,D:2,action:'门联锁与远程启动硬绑定',get RPN(){return this.S*this.O*this.D;}},
+  {mode:'触发功率设置过大',cause:'参数错误',effect:'超工况喷射/爆燃',S:5,O:1,D:3,action:'触发功率上限+二次确认',get RPN(){return this.S*this.O*this.D;}},
+  {mode:'冷却系统失效',cause:'泵/风机故障',effect:'热蔓延加速',S:4,O:2,D:2,action:'冗余冷却+流量监测',get RPN(){return this.S*this.O*this.D;}},
+  {mode:'气体传感器失效',cause:'校准漂移',effect:'漏报烟气风险',S:4,O:2,D:3,action:'冗余探测+定期标定',get RPN(){return this.S*this.O*this.D;}},
+  {mode:'远程停机指令失效',cause:'通信中断',effect:'无法紧急停机',S:5,O:1,D:2,action:'独立硬线急停按钮',get RPN(){return this.S*this.O*this.D;}}
+];}
+function renderFmea(){
+  if(S.fmea.length===0)S.fmea=defaultFmea();
+  const tb=document.getElementById('fmeaBody');
+  tb.innerHTML=S.fmea.map((r,i)=>`<tr>
+    <td>${i+1}</td>
+    <td><input data-i="${i}" data-f="mode" value="${r.mode}"></td>
+    <td><input data-i="${i}" data-f="cause" value="${r.cause}"></td>
+    <td><input data-i="${i}" data-f="effect" value="${r.effect}"></td>
+    <td><input data-i="${i}" data-f="S" value="${r.S}" size="2"></td>
+    <td><input data-i="${i}" data-f="O" value="${r.O}" size="2"></td>
+    <td><input data-i="${i}" data-f="D" value="${r.D}" size="2"></td>
+    <td><b style="color:${r.RPN>=16?'#ff4d5e':r.RPN>=8?'#ffb020':'#27ff9e'}">${r.RPN}</b></td>
+    <td><input data-i="${i}" data-f="action" value="${r.action}"></td>
+  </tr>`).join('');
+  tb.querySelectorAll('input').forEach(inp=>inp.onchange=()=>{const i=+inp.dataset.i,f=inp.dataset.f;let v=inp.value;if(['S','O','D'].includes(f))v=Math.max(1,Math.min(10,+v||1));S.fmea[i][f]=v;renderFmea();});
+  document.getElementById('btnFmeaAdd').onclick=()=>{S.fmea.push({mode:'新失效模式',cause:'',effect:'',S:3,O:2,D:3,action:'',get RPN(){return this.S*this.O*this.D;}});renderFmea();};
+  document.getElementById('btnFmeaDel').onclick=()=>{if(S.fmea.length>1)S.fmea.pop();renderFmea();};
+}
+
+/* =========================================================================
+   报告
+   ========================================================================= */
+function buildReportHTML(){
+  const sim=S.sim||S.preview;const M=sim?sim.metrics:null;const Mo=S.simOpt?S.simOpt.metrics:null;
+  const base=sim?sim.params:null;
+  const fmeaRows=S.fmea.length?S.fmea.map((r,i)=>`<tr><td>${i+1}</td><td>${r.mode}</td><td>${r.cause}</td><td>${r.effect}</td><td>${r.S}</td><td>${r.O}</td><td>${r.D}</td><td>${r.RPN}</td><td>${r.action}</td></tr>`).join(''):'';
+  let img='';try{img=chartCv.toDataURL('image/png');}catch(e){}
+  const total=computeScore();
+  return `<!DOCTYPE html><html lang=zh><head><meta charset=UTF-8><title>动力电池热失控特性测试与热安全防护设计报告</title>
+  <style>body{font-family:'Microsoft YaHei',sans-serif;color:#1f2a37;max-width:900px;margin:auto;padding:24px}
+  h1{color:#0b4f8a}h2{border-left:4px solid #0f6fbf;padding-left:8px;color:#0b4f8a;margin-top:24px}
+  table{border-collapse:collapse;width:100%;margin:8px 0}td,th{border:1px solid #cdd6e0;padding:6px;text-align:center;font-size:13px}
+  th{background:#eef4fb}.kv{color:#5b6878;font-size:13px}img{max-width:100%;border:1px solid #ccc;border-radius:6px}</style></head>
+  <body>
+  <h1>动力电池热失控特性测试与热安全防护设计报告</h1>
+  <div class="kv">虚拟仿真实验02 · 研究探索型 · 6 学时 ｜ <b>教学虚拟训练，不可用于设备安全认证</b><br>生成时间：${new Date().toLocaleString()}</div>
+  <h2>一、实验参数</h2>
+  <table><tr><th>电芯</th><th>模组</th><th>SOC</th><th>冷却</th><th>隔热</th><th>触发方式</th><th>触发功率</th></tr>
+  <tr><td>${base?CELL[base.cellType].name:'—'}</td><td>${base?base.rows+'×'+base.cols:'—'}</td><td>${base?(base.SOC*100)+'%':'—'}</td>
+  <td>${base?base.cooling+'('+base.coolingPower+')':'—'}</td><td>${base?base.insulation:'—'}</td><td>${base?triggerName(base.triggerMode):'—'}</td><td>${base?base.triggerPower+'W':'—'}</td></tr></table>
+  <h2>二、热响应关键指标</h2>
+  ${M?`<table><tr><th>Tmax(℃)</th><th>ΔTmax(℃)</th><th>dT/dt(℃/min)</th><th>Δtprop(s)</th><th>Ecool(kJ)</th><th>传播</th><th>气体峰值</th></tr>
+  <tr><td>${M.Tmax}</td><td>${M.dTuniformMax}</td><td>${M.dTdtMax}</td><td>${M.dtprop==null?'未传播':M.dtprop}</td><td>${M.E_cool}</td><td>${M.propagated?'是':'否'}</td><td>${M.gasMax}</td></tr></table>`:''}
+  ${Mo?`<h2>三、热管理优化前后对比</h2><table><tr><th>指标</th><th>基准</th><th>优化后</th></tr>
+  <tr><td>Tmax(℃)</td><td>${M.Tmax}</td><td>${Mo.Tmax}</td></tr>
+  <tr><td>Δtprop(s)</td><td>${M.dtprop==null?'未传播':M.dtprop}</td><td>${Mo.dtprop==null?'未传播':Mo.dtprop}</td></tr>
+  <tr><td>Ecool(kJ)</td><td>${M.E_cool}</td><td>${Mo.E_cool}</td></tr></table>`:''}
+  <h2>四、热响应曲线</h2>${img?`<img src="${img}">`:'<div class="kv">曲线见交互界面。</div>'}
+  <h2>五、FMEA 风险分析</h2>
+  <table><tr><th>序号</th><th>失效模式</th><th>原因</th><th>影响</th><th>S</th><th>O</th><th>D</th><th>RPN</th><th>措施</th></tr>${fmeaRows}</table>
+  <h2>六、考核成绩</h2>
+  <table><tr><th>实验设计</th><th>试验安全</th><th>数据分析</th><th>热管理优化</th><th>报告</th><th>综合</th></tr>
+  <tr><td>${S.scores.design}/20</td><td>${S.scores.safety}/25</td><td>${S.scores.analysis}/25</td><td>${S.scores.optimize}/20</td><td>${S.scores.report}/10</td><td><b>${total}/100</b></td></tr></table>
+  <div class="kv" style="margin-top:20px">说明：本报告由虚拟仿真实验自动生成，所有数据来自教学级简化物理模型，仅用于实验训练与过程评价。</div>
+  </body></html>`;
+}
+function genReport(){
+  const html=buildReportHTML();
+  document.getElementById('reportPreview').innerHTML=`<div class="kv" style="border:1px dashed var(--line);border-radius:8px;padding:8px">报告已生成（预览见下载文件）。含实验参数、热响应指标、优化对比、曲线、FMEA 与考核成绩。</div>`;
+  S._reportHTML=html;return html;
+}
+document.getElementById('btnGenReport').onclick=()=>{genReport();};
+document.getElementById('btnDlReport').onclick=()=>{const html=genReport();const blob=new Blob([html],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='动力电池热失控特性测试与热安全防护设计报告.html';a.click();};
+
+/* =========================================================================
+   模式切换 / 全局事件 / 动画
+   ========================================================================= */
+function setMode(m){
+  S.mode=m;
+  document.getElementById('modeSandbox').classList.toggle('active',m==='sandbox');
+  document.getElementById('modeGuide').classList.toggle('active',m==='guide');
+  document.getElementById('sandboxPanel').style.display=m==='sandbox'?'block':'none';
+  document.getElementById('guidePanel').style.display=m==='guide'?'block':'none';
+  document.getElementById('progBadge').textContent=m==='sandbox'?'沙盘模式':'引导模式';
+  if(m==='guide'){renderStep();} else {drawScene3D();}
+}
+function tick(){
+  let doDraw=false;
+  if(S.playing&&S.sim){S.frame++;if(S.frame>=S.sim.rec.T.length){S.frame=S.sim.rec.T.length-1;S.playing=false;document.getElementById('stRemote').className='st ok';document.getElementById('stRemote').textContent='远程停机: 完成';document.getElementById('btnPlay').textContent='▶ 播放';}doDraw=true;}
+  /* 温度过渡：把显示温度缓动逼近目标，使参数/故障/重算后的温变过程可见 */
+  const target=rawTemps();
+  if(target){
+    if(!S.dispT||S.dispT.length!==target.length){S.dispT=target.slice();if(!doDraw)doDraw=true;}
+    else{let moving=false;for(let i=0;i<target.length;i++){const d=target[i]-S.dispT[i];if(Math.abs(d)>0.05){S.dispT[i]+=d*S.tween;moving=true;}else S.dispT[i]=target[i];}if(moving&&!doDraw)doDraw=true;}
+  }else{S.dispT=null;if(!doDraw)doDraw=true;}
+  if(doDraw){drawScene3D();drawCharts();refreshEquip();}
+  requestAnimationFrame(tick);
+}
+document.getElementById('btnPlay').onclick=togglePlay;
+document.getElementById('btnThermal').onclick=()=>{thermalOn=!thermalOn;S.thermalOn=thermalOn;document.getElementById('btnThermal').textContent='热成像: '+(thermalOn?'开':'关');drawScene3D();};
+document.getElementById('btnLab').onclick=()=>{S.labScene=!S.labScene;document.getElementById('btnLab').textContent='实验室场景: '+(S.labScene?'开':'关');drawScene3D();};
+document.getElementById('btnEv').onclick=()=>{S.evMode=!S.evMode;document.getElementById('btnEv').textContent='电动汽车场景: '+(S.evMode?'开':'关');drawScene3D();};
+document.getElementById('viewMode').onchange=()=>{S.viewMode=document.getElementById('viewMode').value;drawScene3D();};
+document.getElementById('modeSandbox').onclick=()=>setMode('sandbox');
+document.getElementById('modeGuide').onclick=()=>setMode('guide');
+document.querySelectorAll('[data-tab]').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));t.classList.add('active');const name=t.dataset.tab;['chart','metric','fmea','report'].forEach(p=>document.getElementById('pane-'+p).classList.toggle('active',p===name));if(name==='fmea')renderFmea();});
+document.querySelectorAll('[data-ctab]').forEach(t=>t.onclick=()=>{document.querySelectorAll('[data-ctab]').forEach(x=>x.classList.remove('active'));t.classList.add('active');ctab=t.dataset.ctab;drawCharts();});
+document.getElementById('btnNext').onclick=()=>{
+  const st=STEPS[S.step-1];if(!st.check)return;const res=st.check();showFeedback(res);
+  if(res.ok){awardScore(st.id,res.type);S.completed.add(st.id);if(S.step<24){S.step++;S.visited.add(S.step);renderStep();}}
+};
+document.getElementById('btnPrev').onclick=()=>{if(S.step>1){S.step--;renderStep();}};
+document.getElementById('btnRecompute').onclick=()=>{recomputePreview();S.frame=S.peakFrame;drawScene3D();drawCharts();showFeedback({ok:true,type:'ok',msg:'已按当前参数重算物理模型（所有改动均驱动模型重算）。'});};
+document.getElementById('btnReset').onclick=()=>{if(confirm('确认重置整个实验？所有进度与参数将清除。')){location.reload();}};
+document.getElementById('runBtn').onclick=runSandbox;
+document.getElementById('resetBtn').onclick=()=>{S.sim=null;S.playing=false;stopPlay();drawScene3D();drawCharts();updateAISandbox();document.getElementById('btnPlay').textContent='▶ 播放';};
+document.getElementById('expScene').onclick=()=>exportPNG('scene3d','三维电池包场景.png');
+document.getElementById('faultA').onclick=setFaultA;
+document.getElementById('faultB').onclick=setFaultB;
+document.getElementById('faultC').onclick=setFaultC;
+document.getElementById('faultClr').onclick=resetInterlock;
+['soc','ambient','cpow','ins','exh','tpow'].forEach(id=>document.getElementById(id).addEventListener('input',syncRangeLabels));
+document.getElementById('layout').addEventListener('change',rebuildTriggerOptions);
+document.querySelectorAll('.preset button').forEach(b=>b.addEventListener('click',()=>applyPreset(b.dataset.preset)));
+window.addEventListener('resize',()=>{drawScene3D();drawCharts();});
+
+/* 时钟 */
+setInterval(()=>{const s=Math.floor((Date.now()-S.t0)/1000);document.getElementById('clock').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');},1000);
+
+/* =========================================================================
+   初始化
+   ========================================================================= */
+function init(){
+  rebuildTriggerOptions();syncRangeLabels();
+  recomputePreview();S.frame=S.peakFrame;
+  setMode('sandbox');
+  drawScene3D();drawCharts();refreshEquip();updateScoreBadge();updateAISandbox();
+  renderFmea();
+  requestAnimationFrame(tick);
+  document.getElementById('loading').style.display='none';
+}
+init();
+</script>
+
+
+
+</body></html>

@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>实验档案 · 动力电池实验室虚拟仿真平台</title>
+<style>
+  body{margin:0;padding:0;background:#0b1220;color:#dbe4f0;
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;font-size:13px;line-height:1.6}
+  *{box-sizing:border-box}
+  .wrap{padding:14px 16px 26px;min-height:100%}
+
+  .hd{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    padding-bottom:11px;border-bottom:1px solid #22304a;margin-bottom:14px}
+  .hd h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.5px}
+  .hd .sub{margin-top:3px;font-size:11.5px;color:#8fa3bf}
+  .hd .rt{display:flex;gap:6px;flex-wrap:wrap}
+  .btn{padding:5px 12px;border-radius:6px;border:1px solid #2b3d5c;background:#141f33;
+    color:#a8bcd8;cursor:pointer;font-size:12px;font-family:inherit;transition:.15s}
+  .btn:hover{border-color:#3d557f;color:#e6eefb}
+  .btn.p{background:#155e78;border-color:#2d90b5;color:#eaf6ff}
+  .btn.p:hover{background:#1a7392}
+  .btn.d:hover{border-color:#7a3a3a;color:#ff9b9b}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:9px;margin-bottom:14px}
+  .st{padding:9px 11px;border:1px solid #22304a;border-radius:8px;background:#111a2b}
+  .st .v{font-size:19px;font-weight:700;color:#5ec8f5;line-height:1.25}
+  .st .v.ok{color:#5fe0a8} .st .v.warn{color:#f5c451} .st .v.low{color:#f87171}
+  .st .k{font-size:11px;color:#8fa3bf;margin-top:1px}
+
+  .tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:11px}
+  .tab{padding:5px 12px;border-radius:6px;border:1px solid #2b3d5c;background:#141f33;
+    color:#a8bcd8;cursor:pointer;font-size:12px;font-family:inherit;transition:.15s}
+  .tab:hover{border-color:#3d557f;color:#dbe4f0}
+  .tab.on{background:#155e78;border-color:#2d90b5;color:#eaf6ff;font-weight:600}
+
+  .pane{display:none}
+  .pane.on{display:block}
+
+  .card{border:1px solid #22304a;border-radius:8px;background:#0e1626;margin-bottom:10px;overflow:hidden}
+  .card > .ch{padding:8px 11px;display:flex;gap:10px;align-items:center;
+    background:#121d31;border-bottom:1px solid #1a2537;flex-wrap:wrap}
+  .card > .ch .no{flex:none;padding:2px 9px;border-radius:5px;background:#16223a;
+    border:1px solid #2b3d5c;font-size:11px;color:#9fc4e8;font-weight:600}
+  .card > .ch .tt{flex:1;font-size:12.5px;color:#dbe4f0}
+  .card > .ch .tm{font-size:11px;color:#7d90ad;font-family:Consolas,monospace}
+  .card > .cb{padding:9px 11px}
+
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  thead th{background:#16223a;color:#9fc4e8;font-weight:600;text-align:left;
+    padding:6px 9px;border-bottom:1px solid #2b3d5c;white-space:nowrap}
+  tbody td{padding:5px 9px;border-bottom:1px solid #1a2537}
+  tbody tr:hover{background:#142033}
+  tbody tr:last-child td{border-bottom:none}
+  td.k{color:#8fa3bf;white-space:nowrap;width:118px}
+  td.v{color:#dbe4f0}
+  td.n{font-family:Consolas,monospace;color:#7fd7ff;white-space:nowrap}
+
+  .tagx{display:inline-block;padding:1px 7px;border-radius:4px;font-size:10.5px;white-space:nowrap}
+  .tagx.ok{background:#0f2b21;color:#5fe0a8;border:1px solid #1f6b4d}
+  .tagx.bad{background:#2d1417;color:#ff9b9b;border:1px solid #7a3a3a}
+  .tagx.warn{background:#2c2109;color:#f5c451;border:1px solid #7a5a12}
+  .tagx.info{background:#151f33;color:#8fb8ff;border:1px solid #2f4a76}
+
+  .bar{height:6px;border-radius:3px;background:#1a2537;overflow:hidden;min-width:70px}
+  .bar > i{display:block;height:100%;border-radius:3px;background:#5ec8f5}
+  .bar > i.ok{background:#5fe0a8} .bar > i.low{background:#f87171}
+
+  /* 时间线 */
+  .tl{position:relative;padding-left:20px}
+  .tl:before{content:'';position:absolute;left:6px;top:4px;bottom:4px;width:1px;background:#2b3d5c}
+  .it{position:relative;padding:0 0 13px}
+  .it:before{content:'';position:absolute;left:-17px;top:6px;width:9px;height:9px;border-radius:50%;
+    background:#155e78;border:2px solid #0b1220;box-shadow:0 0 0 1px #2d90b5}
+  .it.bad:before{background:#7a2b2b;box-shadow:0 0 0 1px #b04a4a}
+  .it .l1{font-size:12.5px;color:#dbe4f0}
+  .it .l1 b{color:#eaf6ff}
+  .it .l2{font-size:11px;color:#7d90ad;margin-top:1px}
+  .it .l2 em{font-style:normal;color:#9fc4e8}
+
+  .empty{padding:34px 20px;text-align:center;color:#6b7f9c;border:1px dashed #22304a;border-radius:8px}
+  .empty b{display:block;color:#8fa3bf;font-size:13px;margin-bottom:5px}
+  .note{margin-top:12px;padding:9px 11px;border-radius:7px;background:#111a2b;
+    border:1px solid #22304a;font-size:11.5px;color:#8fa3bf}
+  .note b{color:#9fc4e8}
+  .foot{margin-top:14px;font-size:11px;color:#5f7391;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hd">
+    <div>
+      <h1>实验档案 · 过程记录与成绩中心</h1>
+      <div class="sub">本机存档 · 操作时间线 · 双条件合格判定 · 报告导出</div>
+    </div>
+    <div class="rt">
+      <button class="btn p" id="arBtnRefresh">刷新</button>
+      <button class="btn" id="arBtnExpJ">导出 JSON</button>
+      <button class="btn" id="arBtnExpC">导出 CSV</button>
+      <button class="btn" id="arBtnExpM">导出报告</button>
+      <button class="btn d" id="arBtnClear">清空档案</button>
+    </div>
+  </div>
+
+  <div class="stats" id="arStats"></div>
+
+  <div class="tabs" id="arTabs">
+    <button class="tab on" data-t="all">全部时间线</button>
+    <button class="tab" data-t="exp01">实验 01 · 单体性能</button>
+    <button class="tab" data-t="exp04">实验 04 · 高压系统</button>
+    <button class="tab" data-t="exp05">实验 05 · 梯次利用</button>
+    <button class="tab" data-t="exp02">实验 02 · 热失控</button>
+  </div>
+
+  <div class="pane on" id="arPane-all"></div>
+  <div class="pane" id="arPane-exp01"></div>
+  <div class="pane" id="arPane-exp04"></div>
+  <div class="pane" id="arPane-exp05"></div>
+  <div class="pane" id="arPane-exp02"></div>
+
+  <div class="note">
+    <b>存档范围：</b>档案读取浏览器本机存储（localStorage），
+    <b>不上传任何数据</b>，换浏览器或清理浏览数据后记录不可恢复，重要成绩请及时导出。
+    实验 02 为纯仿真沙盘，未写入本机存档；其结论请在实验页内直接导出报告。
+  </div>
+
+</div>
+
+<script>
+(function () {
+'use strict';
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+  });
+}
+function gid(id) { return document.getElementById(id); }
+
+/* ---------- 存档读取（容错：localStorage 不可用时降级 sessionStorage） ---------- */
+function read(k) {
+  var v = null, mode = 'local';
+  try { v = localStorage.getItem(k); } catch (e) { mode = 'session'; }
+  if (v === null) { try { v = sessionStorage.getItem(k); mode = 'session'; } catch (e2) { mode = 'none'; } }
+  if (v === null) return { mode: mode, data: null };
+  try { return { mode: mode, data: JSON.parse(v) }; }
+  catch (e) { return { mode: mode, data: null, bad: true }; }
+}
+
+var KEY = {
+  exp01: 'batteryLab.exp01.records',
+  exp04: 'exp04_hv_v1',
+  exp05: 'exp05_history',
+};
+var META = {
+  exp01: { no:'实验 01', name:'单体性能测试与危化品安全操作', href:'exp01.html' },
+  exp02: { no:'实验 02', name:'热失控特性与热管理安全', href:'exp02.html' },
+  exp04: { no:'实验 04', name:'高压系统与特种设备集成', href:'exp04.html' },
+  exp05: { no:'实验 05', name:'梯次利用与回收危化品处置', href:'exp05.html' },
+};
+
+function fmtTime(v) {
+  if (!v) return '—';
+  var d;
+  if (typeof v === 'number') d = new Date(v);
+  else { d = new Date(String(v).replace('T', ' ').replace(/-/g, '/')); }
+  if (isNaN(d.getTime())) return String(v);
+  var p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+         ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function ts(v) {
+  var d;
+  if (typeof v === 'number') d = new Date(v);
+  else d = new Date(String(v).replace('T', ' ').replace(/-/g, '/'));
+  var t = d.getTime();
+  return isNaN(t) ? 0 : t;
+}
+
+/* ---------- 归一化：把各实验的异构存档压成统一条目 ---------- */
+function collect() {
+  var all = [];
+
+  /* 实验 01：数组，元素 { at, cell, score, qualified, ... } */
+  var r1 = read(KEY.exp01);
+  if (r1.data && r1.data.length) {
+    r1.data.forEach(function (r, i) {
+      all.push({
+        id: 'exp01', idx: r1.data.length - i,
+        t: ts(r.at), time: fmtTime(r.at),
+        title: (META.exp01.no + ' 第 ' + (i + 1) + ' 次提交'),
+        sub: '电芯 ' + (r.cell || '—'),
+        score: (r.score === undefined || r.score === null) ? null : Number(r.score),
+        pass: !!r.qualified,
+        raw: r,
+      });
+    });
+  }
+
+  /* 实验 04：快照对象 { at, step, maxStep, done, viol, attempts, ... } */
+  var r4 = read(KEY.exp04);
+  if (r4.data && typeof r4.data === 'object') {
+    var s = r4.data;
+    var nDone = 0;
+    if (s.done && typeof s.done === 'object') {
+      Object.keys(s.done).forEach(function (k) { if (s.done[k]) nDone++; });
+    }
+    var nViol = (s.viol && s.viol.length) ? s.viol.length : 0;
+    var total = 24, step = Number(s.step) || 1, maxStep = Number(s.maxStep) || step;
+    var reach = Math.max(step, maxStep);
+    var pct = Math.round(reach / total * 100);
+    all.push({
+      id: 'exp04', idx: 1,
+      t: ts(s.at), time: fmtTime(s.at),
+      title: META.exp04.no + ' 进度快照',
+      sub: '已完成 ' + nDone + ' 步 · 进行至第 ' + reach + ' / ' + total + ' 步（' + pct + '%）',
+      score: pct, pctOnly: true,
+      pass: nViol === 0 && nDone >= total,
+      viol: nViol,
+      raw: s,
+    });
+  }
+
+  /* 实验 05：数组，元素 { ts, s, rank, v } */
+  var r5 = read(KEY.exp05);
+  if (r5.data && r5.data.length) {
+    r5.data.forEach(function (h, i) {
+      all.push({
+        id: 'exp05', idx: r5.data.length - i,
+        t: ts(h.ts), time: fmtTime(h.ts),
+        title: META.exp05.no + ' 第 ' + (r5.data.length - i) + ' 次提交',
+        sub: '评级 ' + (h.rank || '—'),
+        score: (h.s === undefined || h.s === null) ? null : Number(h.s),
+        pass: Number(h.v) === 0,
+        viol: Number(h.v) || 0,
+        raw: h,
+      });
+    });
+  }
+
+  all.sort(function (a, b) { return b.t - a.t; });
+  return all;
+}
+
+/* ---------- 概览 ---------- */
+function renderStats(all) {
+  var n = all.length;
+  var scored = all.filter(function (a) { return a.score !== null && !a.pctOnly; });
+  var nPass = scored.filter(function (a) { return a.pass; }).length;
+  var best = scored.length ? Math.max.apply(null, scored.map(function (a) { return a.score; })) : 0;
+  var lastPass = n ? all[0].pass : false;
+  var ids = {};
+  all.forEach(function (a) { ids[a.id] = 1; });
+  var rate = scored.length ? Math.round(nPass / scored.length * 100) : 0;
+
+  gid('arStats').innerHTML = [
+    ['档案条目', n, ''],
+    ['覆盖实验', Object.keys(ids).length + ' / 4', ''],
+    ['合格次数', nPass, nPass ? 'ok' : ''],
+    ['合格率', rate + '%', rate >= 80 ? 'ok' : (rate >= 50 ? 'warn' : 'low')],
+    ['最高分', best, best >= 80 ? 'ok' : 'low'],
+    ['最近一次', lastPass ? '合格' : '待复核', lastPass ? 'ok' : 'low'],
+  ].map(function (s) {
+    return '<div class="st"><div class="v ' + s[2] + '">' + s[1] + '</div><div class="k">' + s[0] + '</div></div>';
+  }).join('');
+}
+
+/* ---------- 时间线 ---------- */
+function tlHtml(list) {
+  if (!list.length) {
+    return '<div class="empty"><b>暂无档案记录</b>完成任一实验并提交成绩后，记录会自动出现在这里。</div>';
+  }
+  return '<div class="card"><div class="ch"><div class="tt">操作时间线（按时间倒序）</div>' +
+    '<div class="tm">' + list.length + ' 条</div></div><div class="cb"><div class="tl">' +
+    list.map(function (a) {
+      var sc = a.score === null ? null : (a.pctOnly ? a.score + '%' : a.score + ' 分');
+      var tg = a.pass
+        ? '<span class="tagx ok">合格</span>'
+        : '<span class="tagx bad">' + (a.pctOnly ? '进行中' : '未合格') + '</span>';
+      return '<div class="it' + (a.pass ? '' : ' bad') + '">' +
+        '<div class="l1"><b>' + esc(META[a.id].no) + '</b> · ' + esc(a.title) + ' ' + tg +
+        (sc ? ' <span style="color:#7fd7ff;font-family:Consolas,monospace">' + esc(sc) + '</span>' : '') + '</div>' +
+        '<div class="l2"><em>' + esc(a.time) + '</em> · ' + esc(a.sub) +
+        (a.viol ? ' · 违规 ' + a.viol + ' 项' : '') + '</div>' +
+        '</div>';
+    }).join('') + '</div></div></div>';
+}
+
+/* ---------- 实验 01 明细 ---------- */
+function detail01(list) {
+  if (!list.length) return '<div class="empty"><b>实验 01 暂无记录</b>在实验 01 中完成 22 步流程并提交报告后写入。</div>';
+  return list.map(function (a) {
+    var r = a.raw || {};
+    var rows = [
+      ['提交时间', a.time],
+      ['电芯型号', r.cell || '—'],
+      ['总得分', (a.score === null ? '—' : a.score + ' / 100')],
+      ['判定', a.pass ? '合格' : '未合格'],
+    ];
+    Object.keys(r).forEach(function (k) {
+      if (['at','cell','score','qualified'].indexOf(k) >= 0) return;
+      var v = r[k];
+      if (v === null || v === undefined || typeof v === 'object') return;
+      rows.push([k, String(v)]);
+    });
+    var cls = a.score === null ? '' : (a.score >= 80 ? 'ok' : 'low');
+    return '<div class="card"><div class="ch"><span class="no">#' + a.idx + '</span>' +
+      '<div class="tt">' + esc(a.title) + '</div>' +
+      '<span class="tagx ' + (a.pass ? 'ok' : 'bad') + '">' + (a.pass ? '合格' : '未合格') + '</span>' +
+      '<div class="tm">' + esc(a.time) + '</div></div><div class="cb">' +
+      '<table><tbody>' + rows.map(function (x) {
+        return '<tr><td class="k">' + esc(x[0]) + '</td><td class="v">' + esc(x[1]) + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      (a.score === null ? '' :
+        '<div style="margin-top:8px"><div class="bar"><i class="' + cls +
+        '" style="width:' + Math.max(2, Math.min(100, a.score)) + '%"></i></div></div>') +
+      '</div></div>';
+  }).join('');
+}
+
+/* ---------- 实验 04 明细 ---------- */
+function detail04(list) {
+  if (!list.length) return '<div class="empty"><b>实验 04 暂无快照</b>实验 04 采用断点续做，每次操作会自动写入进度快照。</div>';
+  var a = list[0], s = a.raw || {};
+  var done = s.done || {}, attempts = s.attempts || {}, viol = s.viol || [];
+  var total = 24, keys = [];
+  for (var i = 1; i <= total; i++) keys.push(i);
+  var nDone = keys.filter(function (k) { return done[k]; }).length;
+
+  var tbl = '<table><thead><tr><th>步骤</th><th>状态</th><th>重试次数</th></tr></thead><tbody>' +
+    keys.map(function (k) {
+      var d = !!done[k], n = Number(attempts[k]) || 0;
+      return '<tr><td class="k">第 ' + k + ' 步</td><td>' +
+        (d ? '<span class="tagx ok">已完成</span>' : '<span class="tagx info">未开始</span>') +
+        '</td><td class="n">' + n + '</td></tr>';
+    }).join('') + '</tbody></table>';
+
+  var vv = viol.length
+    ? '<table><thead><tr><th>违规项</th><th>说明</th></tr></thead><tbody>' + viol.map(function (v, i) {
+        return '<tr><td class="k">违规 ' + (i + 1) + '</td><td class="v">' +
+          esc(typeof v === 'string' ? v : JSON.stringify(v)) + '</td></tr>';
+      }).join('') + '</tbody></table>'
+    : '<div class="note" style="margin:0;color:#5fe0a8;border-color:#1f6b4d">本次未记录严重违规。</div>';
+
+  return '<div class="card"><div class="ch"><div class="tt">进度快照</div>' +
+    '<div class="tm">' + esc(a.time) + '</div></div><div class="cb">' +
+    '<table><tbody>' +
+    '<tr><td class="k">已完成步骤</td><td class="v">' + nDone + ' / ' + total + '</td></tr>' +
+    '<tr><td class="k">推进至</td><td class="v">第 ' + (s.step || 1) + ' 步（最远 ' + (s.maxStep || 1) + ' 步）</td></tr>' +
+    '<tr><td class="k">违规记录</td><td class="v">' + viol.length + ' 项</td></tr>' +
+    '<tr><td class="k">存档位置</td><td class="v">' + esc(KEY.exp04) + '</td></tr>' +
+    '</tbody></table>' +
+    '<div style="margin-top:7px"><div class="bar"><i style="width:' +
+      Math.round((s.maxStep || 1) / total * 100) + '%"></i></div></div>' +
+    '</div></div>' +
+    '<div class="card"><div class="ch"><div class="tt">步骤完成明细</div></div><div class="cb">' + tbl + '</div></div>' +
+    '<div class="card"><div class="ch"><div class="tt">安全违规</div></div><div class="cb">' + vv + '</div></div>';
+}
+
+/* ---------- 实验 05 明细 ---------- */
+function detail05(list) {
+  if (!list.length) return '<div class="empty"><b>实验 05 暂无记录</b>完成梯次分级并提交后写入（最多保留最近 8 次）。</div>';
+  return '<div class="card"><div class="ch"><div class="tt">历史成绩（最近 8 次）</div>' +
+    '<div class="tm">' + list.length + ' 条</div></div><div class="cb">' +
+    '<table><thead><tr><th>#</th><th>时间</th><th>得分</th><th>评级</th><th>违规</th><th>判定</th></tr></thead><tbody>' +
+    list.map(function (a, i) {
+      var cls = a.score === null ? '' : (a.score >= 80 ? 'ok' : 'low');
+      return '<tr><td class="n">' + (list.length - i) + '</td><td class="v">' + esc(a.time) + '</td>' +
+        '<td><div style="display:flex;align-items:center;gap:7px"><span class="n">' +
+        (a.score === null ? '—' : a.score) + '</span>' +
+        '<div class="bar" style="flex:1"><i class="' + cls + '" style="width:' +
+        Math.max(2, Math.min(100, a.score || 0)) + '%"></i></div></div></td>' +
+        '<td class="v">' + esc((a.raw && a.raw.rank) || '—') + '</td>' +
+        '<td class="n">' + (a.viol || 0) + '</td>' +
+        '<td><span class="tagx ' + (a.pass ? 'ok' : 'bad') + '">' + (a.pass ? '合格' : '未合格') + '</span></td></tr>';
+    }).join('') + '</tbody></table></div></div>';
+}
+
+/* ---------- 实验 02 ---------- */
+function detail02() {
+  return '<div class="card"><div class="ch"><div class="tt">实验 02 · 热失控可视化沙盘</div>' +
+    '<span class="tagx info">纯仿真 · 不写本机存档</span></div><div class="cb">' +
+    '<table><tbody>' +
+    '<tr><td class="k">存档方式</td><td class="v">该实验为参数化仿真沙盘，未接入本机档案；每次修改参数即时重算，无固定“提交”节点。</td></tr>' +
+    '<tr><td class="k">报告导出</td><td class="v">在实验页内完成仿真后，使用页面自带的「导出报告」按钮生成含实验参数、热响应指标、优化对比、曲线与 FMEA 的完整报告。</td></tr>' +
+    '<tr><td class="k">可调参数</td><td class="v">电芯体系（LFP / NMC / NCA）、阵列行列数、SOC、触发位置与功率、冷却方式、冷却功率、隔热系数、环境温度。</td></tr>' +
+    '<tr><td class="k">关键指标</td><td class="v">热失控触发时刻、传播时刻、峰值温度、最大温升速率、产气量、泄压时刻。</td></tr>' +
+    '</tbody></table></div></div>';
+}
+
+/* ---------- 导出 ---------- */
+function dl(name, text, mime) {
+  try {
+    var b = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
+    var u = URL.createObjectURL(b);
+    var a = document.createElement('a');
+    a.href = u; a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(u); }, 200);
+  } catch (e) { window.alert('导出失败：' + (e && e.message ? e.message : e)); }
+}
+function stamp() {
+  var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes());
+}
+function csvEsc(s) {
+  s = String(s === null || s === undefined ? '' : s);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function exportJson(all) {
+  var out = {
+    title: '动力电池实验室虚拟仿真实验平台 · 实验档案',
+    exportedAt: new Date().toISOString(),
+    storage: 'browser localStorage (本机)',
+    count: all.length,
+    records: all.map(function (a) {
+      return { exp: a.id, expName: META[a.id].name, time: a.time, title: a.title,
+               score: a.score, qualified: a.pass, violations: a.viol || 0, raw: a.raw };
+    }),
+  };
+  dl('实验档案_' + stamp() + '.json', JSON.stringify(out, null, 2), 'application/json');
+}
+function exportCsv(all) {
+  var head = ['序号','实验','实验名称','时间','条目','得分','判定','违规数'];
+  var rows = all.map(function (a, i) {
+    return [i + 1, META[a.id].no, META[a.id].name, a.time, a.title,
+            (a.score === null ? '' : (a.pctOnly ? a.score + '%' : a.score)),
+            (a.pass ? '合格' : (a.pctOnly ? '进行中' : '未合格')), (a.viol || 0)];
+  });
+  dl('实验档案_' + stamp() + '.csv',
+     '\ufeff' + [head].concat(rows).map(function (r) { return r.map(csvEsc).join(','); }).join('\r\n'),
+     'text/csv');
+}
+function exportMd(all) {
+  var scored = all.filter(function (a) { return a.score !== null && !a.pctOnly; });
+  var best = scored.length ? Math.max.apply(null, scored.map(function (a) { return a.score; })) : 0;
+  var nPass = scored.filter(function (a) { return a.pass; }).length;
+  var L = [];
+  L.push('# 实验档案 · 动力电池实验室虚拟仿真实验平台');
+  L.push('');
+  L.push('- 导出时间：' + fmtTime(new Date()));
+  L.push('- 存档位置：浏览器本机 localStorage（不上传）');
+  L.push('- 档案条目：**' + all.length + '** 条');
+  L.push('- 合格次数：**' + nPass + '** 次');
+  L.push('- 最高得分：**' + best + '** 分');
+  L.push('');
+  L.push('> 合格判定为双条件：总分 ≥ 80 分 **且** 无未纠正的严重安全违规。');
+  L.push('');
+  L.push('## 一、记录总表');
+  L.push('');
+  L.push('| # | 实验 | 时间 | 条目 | 得分 | 判定 | 违规 |');
+  L.push('|---|---|---|---|---|---|---|');
+  all.forEach(function (a, i) {
+    L.push('| ' + (i + 1) + ' | ' + META[a.id].no + ' | ' + a.time + ' | ' + a.title + ' | ' +
+      (a.score === null ? '—' : (a.pctOnly ? a.score + '%' : a.score)) + ' | ' +
+      (a.pass ? '合格' : (a.pctOnly ? '进行中' : '未合格')) + ' | ' + (a.viol || 0) + ' |');
+  });
+  L.push('');
+  L.push('## 二、分实验明细');
+  L.push('');
+  ['exp01','exp04','exp05','exp02'].forEach(function (id) {
+    var sub = all.filter(function (a) { return a.id === id; });
+    L.push('### ' + META[id].no + ' · ' + META[id].name);
+    L.push('');
+    if (!sub.length) { L.push('- 暂无记录。'); L.push(''); return; }
+    sub.forEach(function (a) {
+      L.push('- **' + a.time + '**　' + a.title +
+        '　得分 ' + (a.score === null ? '—' : (a.pctOnly ? a.score + '%' : a.score)) +
+        '　' + (a.pass ? '合格' : (a.pctOnly ? '进行中' : '未合格')) +
+        (a.viol ? '　违规 ' + a.viol + ' 项' : ''));
+    });
+    L.push('');
+  });
+  L.push('---');
+  L.push('');
+  L.push('本档案由平台自动生成，数据仅存于本机浏览器，换设备或清理浏览数据后不可恢复。');
+  dl('实验档案_' + stamp() + '.md', L.join('\n'), 'text/markdown');
+}
+
+/* ---------- 主流程 ---------- */
+var all = [];
+function render() {
+  all = collect();
+  renderStats(all);
+  gid('arPane-all').innerHTML = tlHtml(all);
+  gid('arPane-exp01').innerHTML = detail01(all.filter(function (a) { return a.id === 'exp01'; }));
+  gid('arPane-exp04').innerHTML = detail04(all.filter(function (a) { return a.id === 'exp04'; }));
+  gid('arPane-exp05').innerHTML = detail05(all.filter(function (a) { return a.id === 'exp05'; }));
+  gid('arPane-exp02').innerHTML = detail02();
+}
+
+gid('arTabs').addEventListener('click', function (e) {
+  var t = e.target;
+  if (!t || t.tagName !== 'BUTTON' || !t.dataset.t) return;
+  var k = t.dataset.t;
+  [].forEach.call(gid('arTabs').children, function (b) {
+    b.className = 'tab' + (b.dataset.t === k ? ' on' : '');
+  });
+  ['all','exp01','exp04','exp05','exp02'].forEach(function (p) {
+    gid('arPane-' + p).className = 'pane' + (p === k ? ' on' : '');
+  });
+});
+
+gid('arBtnRefresh').addEventListener('click', render);
+gid('arBtnExpJ').addEventListener('click', function () { exportJson(all); });
+gid('arBtnExpC').addEventListener('click', function () { exportCsv(all); });
+gid('arBtnExpM').addEventListener('click', function () { exportMd(all); });
+gid('arBtnClear').addEventListener('click', function () {
+  if (!window.confirm('将清空本机的全部实验档案（实验 01 / 04 / 05），且不可恢复。\n建议先导出备份。确定继续？')) return;
+  if (!window.confirm('再次确认：真的要清空吗？')) return;
+  Object.keys(KEY).forEach(function (k) {
+    try { localStorage.removeItem(KEY[k]); } catch (e) {}
+    try { sessionStorage.removeItem(KEY[k]); } catch (e) {}
+  });
+  render();
+});
+
+render();
+})();
+</script>
+</body>
+</html>
