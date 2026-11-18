@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>小米 SU7 车模 · 离线驾驶版</title>
+<style>
+  html,body{height:100%;margin:0;background:#0d1014;color:#e8eaed;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px}
+  a{color:#3b82f6;text-decoration:none;font-size:15px;border:1px solid #243040;
+    padding:10px 22px;border-radius:9px;transition:.15s}
+  a:hover{border-color:#3b82f6;background:rgba(59,130,246,.1)}
+  p{font-size:13px;color:#7c8a9c;margin:0}
+</style>
+</head>
+<body>
+  <p>小米 SU7 车模 · 离线驾驶版</p>
+  <a id="go" href="#">进入车模 →</a>
+  <p style="font-size:11px;opacity:.6">正在加载，若无反应请点击上方按钮</p>
+  <script>
+    var target = "./" + encodeURIComponent("小米SU7车模-离线驾驶版.html");
+    document.getElementById("go").setAttribute("href", target);
+    location.replace(target);
+  </script>
+</body>
+</html>
