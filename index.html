@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>项目演示 · 邵奕阳</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{min-height:100vh;background:radial-gradient(ellipse at 50% 0%,#1a2230 0%,#0b0e12 60%);
+    color:#e8eaed;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;gap:28px}
+  h1{font-size:20px;font-weight:600;letter-spacing:.5px}
+  .sub{font-size:12.5px;color:#7c8a9c;text-align:center;line-height:1.8}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;width:100%;max-width:760px}
+  a.card{display:block;padding:22px 24px;border:1px solid #243040;border-radius:14px;
+    background:linear-gradient(180deg,#151a21,#10151b);text-decoration:none;color:inherit;
+    transition:.18s;position:relative;overflow:hidden}
+  a.card:hover{border-color:#3b82f6;transform:translateY(-3px);
+    box-shadow:0 12px 30px rgba(0,0,0,.5),0 0 0 1px rgba(59,130,246,.25)}
+  .tag{font-size:10px;letter-spacing:1.2px;color:#5b8def;text-transform:uppercase;font-weight:700}
+  .card h2{font-size:16px;margin:9px 0 8px;font-weight:600}
+  .card p{font-size:12px;color:#8b98aa;line-height:1.7}
+  .go{margin-top:14px;font-size:12.5px;color:#3b82f6}
+  footer{font-size:11px;color:#4d5765}
+</style>
+</head>
+<body>
+  <h1>项目演示</h1>
+  <p class="sub">两个可离线运行的纯前端三维交互项目<br />点开即用，无需安装、无需登录</p>
+  <div class="cards">
+    <a class="card" href="./su7-panel/">
+      <span class="tag">Three.js · WebGL</span>
+      <h2>小米 SU7 车模 · 离线驾驶版</h2>
+      <p>三维车模实时渲染，支持车漆切换、零件拆解、机位预设与驾驶模式。</p>
+      <div class="go">进入演示 →</div>
+    </a>
+    <a class="card" href="./battery-lab-offline/">
+      <span class="tag">虚拟仿真 · 教学</span>
+      <h2>动力电池虚拟仿真实验平台</h2>
+      <p>5 个实验 + 3 个认知模块，含三维实验室、BMS 仿真与实验档案。</p>
+      <div class="go">进入演示 →</div>
+    </a>
+  </div>
+  <footer>邵奕阳 · 江苏理工学院</footer>
+</body>
+</html>
